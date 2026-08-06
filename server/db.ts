@@ -1,0 +1,721 @@
+import Database from "better-sqlite3";
+import { and, desc, eq, gte, lte, SQL } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
+import fs from "fs";
+import path from "path";
+import {
+  exerciseSessions,
+  InsertExerciseSession,
+  InsertMoodEntry,
+  InsertReminder,
+  InsertRoutine,
+  InsertRoutineEntry,
+  InsertSensoryTrigger,
+  InsertUser,
+  InsertUserSettings,
+  moodEntries,
+  reminders,
+  routineEntries,
+  routines,
+  sensoryTriggers,
+  users,
+  userSettings,
+} from "../drizzle/schema";
+import { ENV } from "./_core/env";
+import { MIGRATION_SQL } from "./migrations";
+import { runSeeds } from "./seeds";
+
+const dialect = new SQLiteSyncDialect();
+
+/**
+ * Compatibilidade com os módulos que usam SQL cru (gamification, notifications, crisis):
+ * executa a query no better-sqlite3, devolvendo linhas para SELECT e
+ * { insertId, affectedRows } para INSERT/UPDATE/DELETE — mesmo contrato do driver MySQL original.
+ */
+function makeExecute(client: Database.Database) {
+  return async (query: SQL): Promise<any> => {
+    const { sql: text, params } = dialect.sqlToQuery(query);
+    const boundParams = params.map((p) => {
+      if (p instanceof Date) return p.toISOString();
+      if (typeof p === "boolean") return p ? 1 : 0;
+      return p;
+    });
+    const stmt = client.prepare(text);
+    if (stmt.reader) {
+      return stmt.all(...boundParams);
+    }
+    const info = stmt.run(...boundParams);
+    return { insertId: Number(info.lastInsertRowid), affectedRows: info.changes };
+  };
+}
+
+export type AppDb = ReturnType<typeof drizzle> & { execute: (query: SQL) => Promise<any> };
+
+let _db: AppDb | null = null;
+
+export async function getDb(): Promise<AppDb | null> {
+  if (!_db) {
+    try {
+      const dbPath = ENV.databasePath;
+      if (dbPath !== ":memory:") {
+        fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true });
+      }
+      const client = new Database(dbPath);
+      client.pragma("journal_mode = WAL");
+      client.exec(MIGRATION_SQL);
+      runSeeds(client);
+      const db = drizzle(client) as AppDb;
+      db.execute = makeExecute(client);
+      _db = db;
+    } catch (error) {
+      console.warn("[Database] Failed to connect:", error);
+      _db = null;
+    }
+  }
+  return _db;
+}
+
+// Users
+export async function createUser(user: InsertUser) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(users).values(user).returning({ id: users.id });
+  return result[0];
+}
+
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserByOpenId(openId: string) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get user: database not available");
+    return undefined;
+  }
+
+  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function updateUserLastSignedIn(id: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, id));
+}
+
+// Mood Entries
+export async function createMoodEntry(entry: InsertMoodEntry) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(moodEntries).values(entry);
+  return result;
+}
+
+export async function getMoodEntriesByUser(userId: number, startDate?: Date, endDate?: Date) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  let query = db.select().from(moodEntries).where(eq(moodEntries.userId, userId));
+
+  if (startDate && endDate) {
+    query = db.select().from(moodEntries).where(
+      and(
+        eq(moodEntries.userId, userId),
+        gte(moodEntries.date, startDate),
+        lte(moodEntries.date, endDate)
+      )
+    );
+  } else if (startDate) {
+    // Only startDate provided — filter from startDate to now
+    query = db.select().from(moodEntries).where(
+      and(
+        eq(moodEntries.userId, userId),
+        gte(moodEntries.date, startDate)
+      )
+    );
+  }
+
+  const result = await query.orderBy(desc(moodEntries.date));
+  return result;
+}
+
+export async function deleteMoodEntry(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(moodEntries).where(
+    and(eq(moodEntries.id, id), eq(moodEntries.userId, userId))
+  );
+}
+
+// Sensory Triggers
+export async function createSensoryTrigger(trigger: InsertSensoryTrigger) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(sensoryTriggers).values(trigger);
+  return result;
+}
+
+export async function getSensoryTriggersByUser(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.select().from(sensoryTriggers)
+    .where(eq(sensoryTriggers.userId, userId))
+    .orderBy(desc(sensoryTriggers.createdAt));
+  return result;
+}
+
+export async function updateSensoryTrigger(id: number, userId: number, data: Partial<InsertSensoryTrigger>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(sensoryTriggers)
+    .set(data)
+    .where(and(eq(sensoryTriggers.id, id), eq(sensoryTriggers.userId, userId)));
+}
+
+export async function deleteSensoryTrigger(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(sensoryTriggers).where(
+    and(eq(sensoryTriggers.id, id), eq(sensoryTriggers.userId, userId))
+  );
+}
+
+// Routines
+export async function createRoutine(routine: InsertRoutine) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(routines).values(routine);
+  return result;
+}
+
+export async function getRoutinesByUser(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.select().from(routines)
+    .where(eq(routines.userId, userId))
+    .orderBy(desc(routines.createdAt));
+  return result;
+}
+
+export async function updateRoutine(id: number, userId: number, data: Partial<InsertRoutine>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(routines)
+    .set(data)
+    .where(and(eq(routines.id, id), eq(routines.userId, userId)));
+}
+
+export async function deleteRoutine(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(routines).where(
+    and(eq(routines.id, id), eq(routines.userId, userId))
+  );
+}
+
+// Routine Entries
+export async function createRoutineEntry(entry: InsertRoutineEntry) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(routineEntries).values(entry);
+  return result;
+}
+
+export async function getRoutineEntriesByUser(userId: number, routineId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  let query = db.select().from(routineEntries).where(eq(routineEntries.userId, userId));
+
+  if (routineId) {
+    query = db.select().from(routineEntries).where(
+      and(eq(routineEntries.userId, userId), eq(routineEntries.routineId, routineId))
+    );
+  }
+
+  const result = await query.orderBy(desc(routineEntries.date));
+  return result;
+}
+
+export async function updateRoutineEntry(id: number, userId: number, data: Partial<InsertRoutineEntry>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(routineEntries)
+    .set(data)
+    .where(and(eq(routineEntries.id, id), eq(routineEntries.userId, userId)));
+}
+
+// Exercise Sessions
+export async function createExerciseSession(session: InsertExerciseSession) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(exerciseSessions).values(session);
+  return result;
+}
+
+export async function getExerciseSessionsByUser(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.select().from(exerciseSessions)
+    .where(eq(exerciseSessions.userId, userId))
+    .orderBy(desc(exerciseSessions.startedAt));
+  return result;
+}
+
+// User Settings
+export async function getUserSettings(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.select().from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function upsertUserSettings(userId: number, settings: Partial<InsertUserSettings>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await getUserSettings(userId);
+
+  if (existing) {
+    await db.update(userSettings)
+      .set({ ...settings, updatedAt: new Date() })
+      .where(eq(userSettings.userId, userId));
+  } else {
+    await db.insert(userSettings).values({
+      userId,
+      ...settings
+    } as InsertUserSettings);
+  }
+}
+
+
+// ===== Reminders Functions =====
+
+export async function createReminder(reminder: Omit<InsertReminder, 'createdAt'>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.insert(reminders).values(reminder as InsertReminder);
+}
+
+export async function getUserReminders(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return await db.select().from(reminders)
+    .where(and(
+      eq(reminders.userId, userId),
+      eq(reminders.isActive, true)
+    ))
+    .orderBy(desc(reminders.createdAt));
+}
+
+export async function updateReminder(id: number, userId: number, updates: Partial<InsertReminder>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(reminders)
+    .set(updates)
+    .where(and(
+      eq(reminders.id, id),
+      eq(reminders.userId, userId)
+    ));
+}
+
+export async function deleteReminder(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(reminders)
+    .set({ isActive: false })
+    .where(and(
+      eq(reminders.id, id),
+      eq(reminders.userId, userId)
+    ));
+}
+
+export async function recordReminderResponse(id: number, userId: number, responseTime: Date) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get current reminder
+  const reminder = await db.select().from(reminders)
+    .where(and(
+      eq(reminders.id, id),
+      eq(reminders.userId, userId)
+    ))
+    .limit(1);
+
+  if (reminder.length === 0) return;
+
+  const current = reminder[0];
+
+  // Extract hour from response time
+  const hour = responseTime.getHours();
+  const minute = responseTime.getMinutes();
+  const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+
+  // Update preferred times if smart reminder
+  let preferredTimes = current.preferredTimes || [];
+  if (current.isSmart) {
+    preferredTimes = [...preferredTimes, timeString];
+    // Keep only last 10 response times
+    if (preferredTimes.length > 10) {
+      preferredTimes = preferredTimes.slice(-10);
+    }
+  }
+
+  await db.update(reminders)
+    .set({
+      lastTriggered: responseTime,
+      responseCount: (current.responseCount || 0) + 1,
+      preferredTimes: preferredTimes.length > 0 ? preferredTimes : null,
+    })
+    .where(eq(reminders.id, id));
+}
+
+export async function getSmartReminderSuggestions(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get all mood entries to analyze patterns
+  const entries = await db.select().from(moodEntries)
+    .where(eq(moodEntries.userId, userId))
+    .orderBy(desc(moodEntries.date))
+    .limit(100);
+
+  if (entries.length < 7) {
+    return {
+      hasSufficientData: false,
+      message: "Continue registrando seu humor para receber sugestões personalizadas de lembretes.",
+      suggestions: [],
+    };
+  }
+
+  // Analyze most common hours for mood entries
+  const hourCounts: Record<number, number> = {};
+  entries.forEach(entry => {
+    const hour = new Date(entry.date).getHours();
+    hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+  });
+
+  // Find top 3 most common hours
+  const topHours = Object.entries(hourCounts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3)
+    .map(([hour]) => parseInt(hour));
+
+  const suggestions = topHours.map(hour => ({
+    time: `${hour.toString().padStart(2, '0')}:00`,
+    reason: `Você costuma registrar seu humor por volta deste horário`,
+    frequency: hourCounts[hour],
+  }));
+
+  return {
+    hasSufficientData: true,
+    message: "Baseado nos seus registros, sugerimos os seguintes horários para lembretes:",
+    suggestions,
+  };
+}
+
+
+// ===== Routine Analytics Functions =====
+
+export async function getRoutineProgress(userId: number, routineId?: number, period: "week" | "month" = "week") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const days = period === "week" ? 7 : 30;
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+
+  let query = db.select().from(routineEntries)
+    .where(and(
+      eq(routineEntries.userId, userId),
+      gte(routineEntries.date, startDate)
+    ))
+    .orderBy(desc(routineEntries.date));
+
+  if (routineId) {
+    query = db.select().from(routineEntries)
+      .where(and(
+        eq(routineEntries.userId, userId),
+        eq(routineEntries.routineId, routineId),
+        gte(routineEntries.date, startDate)
+      ))
+      .orderBy(desc(routineEntries.date));
+  }
+
+  const entries = await query;
+
+  // Calculate daily completion rate
+  const dailyData: Record<string, { completed: number; total: number }> = {};
+
+  entries.forEach(entry => {
+    const dateKey = new Date(entry.date).toISOString().split('T')[0];
+    if (!dailyData[dateKey]) {
+      dailyData[dateKey] = { completed: 0, total: 0 };
+    }
+    dailyData[dateKey].total++;
+    if (entry.completed) {
+      dailyData[dateKey].completed++;
+    }
+  });
+
+  const chartData = Object.entries(dailyData).map(([date, data]) => ({
+    date,
+    completionRate: Math.round((data.completed / data.total) * 100),
+    completed: data.completed,
+    total: data.total,
+  })).sort((a, b) => a.date.localeCompare(b.date));
+
+  return {
+    period,
+    chartData,
+    totalEntries: entries.length,
+    completedEntries: entries.filter(e => e.completed).length,
+    completionRate: entries.length > 0
+      ? Math.round((entries.filter(e => e.completed).length / entries.length) * 100)
+      : 0,
+  };
+}
+
+export async function getRoutineStreaks(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const userRoutines = await db.select().from(routines)
+    .where(and(
+      eq(routines.userId, userId),
+      eq(routines.isActive, true)
+    ));
+
+  return userRoutines.map(routine => ({
+    id: routine.id,
+    title: routine.title,
+    currentStreak: routine.currentStreak,
+    longestStreak: routine.longestStreak,
+    totalCompletions: routine.totalCompletions,
+    points: routine.points,
+  }));
+}
+
+export async function getRoutineMoodCorrelations(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get last 30 days of data
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - 30);
+
+  const routineData = await db.select().from(routineEntries)
+    .where(and(
+      eq(routineEntries.userId, userId),
+      gte(routineEntries.date, startDate)
+    ));
+
+  const moodData = await db.select().from(moodEntries)
+    .where(and(
+      eq(moodEntries.userId, userId),
+      gte(moodEntries.date, startDate)
+    ));
+
+  // Group by date
+  const dailyData: Record<string, { routinesCompleted: number; avgMood: number; avgAnxiety: number }> = {};
+
+  routineData.forEach(entry => {
+    const dateKey = new Date(entry.date).toISOString().split('T')[0];
+    if (!dailyData[dateKey]) {
+      dailyData[dateKey] = { routinesCompleted: 0, avgMood: 0, avgAnxiety: 0 };
+    }
+    if (entry.completed) {
+      dailyData[dateKey].routinesCompleted++;
+    }
+  });
+
+  moodData.forEach(entry => {
+    const dateKey = new Date(entry.date).toISOString().split('T')[0];
+    if (dailyData[dateKey]) {
+      dailyData[dateKey].avgMood = entry.moodLevel;
+      dailyData[dateKey].avgAnxiety = entry.anxietyLevel;
+    }
+  });
+
+  // Calculate correlations
+  const daysWithBothData = Object.values(dailyData).filter(d => d.avgMood > 0);
+
+  if (daysWithBothData.length < 5) {
+    return {
+      hasSufficientData: false,
+      message: "Continue registrando suas rotinas e humor para ver correlações.",
+      correlations: [],
+    };
+  }
+
+  const avgMoodWithRoutines = daysWithBothData
+    .filter(d => d.routinesCompleted > 0)
+    .reduce((sum, d) => sum + d.avgMood, 0) / daysWithBothData.filter(d => d.routinesCompleted > 0).length;
+
+  const avgMoodWithoutRoutines = daysWithBothData
+    .filter(d => d.routinesCompleted === 0)
+    .reduce((sum, d) => sum + d.avgMood, 0) / (daysWithBothData.filter(d => d.routinesCompleted === 0).length || 1);
+
+  const moodImprovement = avgMoodWithRoutines - avgMoodWithoutRoutines;
+
+  return {
+    hasSufficientData: true,
+    message: "Análise dos últimos 30 dias",
+    correlations: [
+      {
+        metric: "Humor",
+        withRoutines: Math.round(avgMoodWithRoutines * 10) / 10,
+        withoutRoutines: Math.round(avgMoodWithoutRoutines * 10) / 10,
+        improvement: Math.round(moodImprovement * 10) / 10,
+        impact: moodImprovement > 1 ? "Positivo" : moodImprovement < -1 ? "Negativo" : "Neutro",
+      },
+    ],
+  };
+}
+
+export async function getBestRoutineTimes(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const entries = await db.select().from(routineEntries)
+    .innerJoin(routines, eq(routineEntries.routineId, routines.id))
+    .where(and(
+      eq(routineEntries.userId, userId),
+      eq(routineEntries.completed, true)
+    ))
+    .limit(100);
+
+  // Count completions by time of day
+  const timeStats: Record<string, number> = {
+    morning: 0,
+    afternoon: 0,
+    evening: 0,
+    night: 0,
+  };
+
+  entries.forEach(({ routines: routine }) => {
+    if (routine.timeOfDay in timeStats) {
+      timeStats[routine.timeOfDay]++;
+    }
+  });
+
+  const bestTimes = Object.entries(timeStats)
+    .map(([time, count]) => ({
+      timeOfDay: time,
+      completions: count,
+      label: time === 'morning' ? 'Manhã' :
+             time === 'afternoon' ? 'Tarde' :
+             time === 'evening' ? 'Noite' : 'Madrugada',
+    }))
+    .sort((a, b) => b.completions - a.completions);
+
+  return {
+    bestTimes,
+    recommendation: bestTimes[0]?.label || "Manhã",
+  };
+}
+
+export async function getRoutineAdhesion(userId: number, period: "week" | "month" = "month") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const days = period === "week" ? 7 : 30;
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+
+  const entries = await db.select().from(routineEntries)
+    .where(and(
+      eq(routineEntries.userId, userId),
+      gte(routineEntries.date, startDate)
+    ));
+
+  const totalEntries = entries.length;
+  const completedEntries = entries.filter(e => e.completed).length;
+  const adhesionRate = totalEntries > 0 ? (completedEntries / totalEntries) * 100 : 0;
+
+  // Calculate weekly breakdown
+  const weeklyData: Record<number, { completed: number; total: number }> = {};
+
+  entries.forEach(entry => {
+    const weekNum = Math.floor((new Date().getTime() - new Date(entry.date).getTime()) / (7 * 24 * 60 * 60 * 1000));
+    if (!weeklyData[weekNum]) {
+      weeklyData[weekNum] = { completed: 0, total: 0 };
+    }
+    weeklyData[weekNum].total++;
+    if (entry.completed) {
+      weeklyData[weekNum].completed++;
+    }
+  });
+
+  return {
+    period,
+    adhesionRate: Math.round(adhesionRate),
+    totalEntries,
+    completedEntries,
+    weeklyBreakdown: Object.entries(weeklyData).map(([week, data]) => ({
+      week: parseInt(week),
+      rate: Math.round((data.completed / data.total) * 100),
+    })),
+  };
+}
+
+export async function getUserRoutineStats(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const userRoutines = await db.select().from(routines)
+    .where(eq(routines.userId, userId));
+
+  const totalPoints = userRoutines.reduce((sum, r) => sum + (r.totalCompletions * r.points), 0);
+  const totalRoutines = userRoutines.length;
+  const activeRoutines = userRoutines.filter(r => r.isActive).length;
+  const bestStreak = Math.max(...userRoutines.map(r => r.longestStreak), 0);
+  const totalCompletions = userRoutines.reduce((sum, r) => sum + r.totalCompletions, 0);
+
+  return {
+    totalPoints,
+    totalRoutines,
+    activeRoutines,
+    bestStreak,
+    totalCompletions,
+    level: Math.floor(totalPoints / 100) + 1,
+  };
+}
