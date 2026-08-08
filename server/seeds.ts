@@ -107,6 +107,106 @@ export function runSeeds(client: BetterSqlite3.Database) {
     for (const row of rows) insert.run(...row);
   }
 
+  const techniqueLibraryCount = (client.prepare("SELECT COUNT(*) as c FROM techniques").get() as { c: number }).c;
+  if (techniqueLibraryCount === 0) {
+    const insert = client.prepare(
+      "INSERT INTO techniques (title, description, category, instructions, duration, difficulty, tags) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    );
+    const rows: [string, string, string, string, number, string, string][] = [
+      [
+        "Respiração Diafragmática",
+        "Respiração profunda usando o diafragma para ativar a resposta de relaxamento do corpo",
+        "breathing",
+        JSON.stringify(["Sente-se ou deite-se confortavelmente", "Coloque uma mão no peito e outra na barriga", "Inspire pelo nariz sentindo a barriga expandir", "Expire lentamente pela boca sentindo a barriga contrair", "Repita por alguns minutos"]),
+        5,
+        "beginner",
+        JSON.stringify(["ansiedade", "relaxamento"]),
+      ],
+      [
+        "Respiração 4-7-8",
+        "Padrão de respiração com expiração prolongada, útil antes de dormir ou em momentos de tensão",
+        "breathing",
+        JSON.stringify(["Inspire pelo nariz contando até 4", "Segure o ar contando até 7", "Expire pela boca contando até 8", "Repita o ciclo de 4 a 8 vezes"]),
+        4,
+        "beginner",
+        JSON.stringify(["ansiedade", "sono"]),
+      ],
+      [
+        "Grounding 5-4-3-2-1",
+        "Técnica de ancoragem sensorial que traz a atenção de volta ao momento presente",
+        "grounding",
+        JSON.stringify(["Nomeie 5 coisas que você vê", "4 coisas que você pode tocar", "3 sons que você ouve", "2 cheiros que você sente", "1 sabor que você percebe"]),
+        5,
+        "beginner",
+        JSON.stringify(["sobrecarga sensorial", "ansiedade"]),
+      ],
+      [
+        "Ancoragem por Objeto",
+        "Usar um objeto de textura conhecida para se reconectar ao presente",
+        "grounding",
+        JSON.stringify(["Escolha um objeto pequeno e familiar", "Segure-o com as duas mãos", "Descreva mentalmente sua textura, peso e temperatura", "Repita até se sentir mais presente"]),
+        3,
+        "beginner",
+        JSON.stringify(["sensorial", "portátil"]),
+      ],
+      [
+        "Pressão Profunda com Cobertor",
+        "Estímulo de pressão profunda para regular o sistema sensorial e reduzir ansiedade",
+        "physical",
+        JSON.stringify(["Enrole-se em um cobertor pesado ou cobertor ponderado", "Aplique pressão firme e constante", "Permaneça assim por 5 a 10 minutos", "Respire normalmente durante o processo"]),
+        10,
+        "beginner",
+        JSON.stringify(["sensorial", "sobrecarga"]),
+      ],
+      [
+        "Alongamento de Liberação de Tensão",
+        "Sequência curta de alongamentos para liberar tensão muscular acumulada",
+        "physical",
+        JSON.stringify(["Alongue o pescoço lentamente para os dois lados", "Gire os ombros para trás 10 vezes", "Alongue os braços acima da cabeça", "Incline o tronco para frente soltando a coluna"]),
+        8,
+        "intermediate",
+        JSON.stringify(["tensão", "movimento"]),
+      ],
+      [
+        "Reestruturação Cognitiva",
+        "Questionar pensamentos catastróficos substituindo-os por interpretações mais equilibradas",
+        "cognitive",
+        JSON.stringify(["Identifique o pensamento que causa angústia", "Pergunte-se: isso é um fato ou uma suposição?", "Liste evidências a favor e contra o pensamento", "Escreva uma versão mais realista do pensamento"]),
+        10,
+        "intermediate",
+        JSON.stringify(["ansiedade", "pensamentos"]),
+      ],
+      [
+        "Diário de Pensamentos",
+        "Registro estruturado de situação, pensamento, emoção e reação para identificar padrões",
+        "cognitive",
+        JSON.stringify(["Anote a situação que gerou desconforto", "Anote o pensamento automático que surgiu", "Anote a emoção e sua intensidade (0-10)", "Anote uma resposta alternativa mais equilibrada"]),
+        15,
+        "advanced",
+        JSON.stringify(["autoconhecimento", "padrões"]),
+      ],
+      [
+        "Roteiro de Saída Social",
+        "Frase preparada com antecedência para se retirar de uma situação social sobrecarregante",
+        "social",
+        JSON.stringify(["Escolha uma frase curta e neutra com antecedência (ex: 'preciso de um momento')", "Pratique dizê-la em voz alta algumas vezes", "Use-a sem se justificar demais quando precisar se afastar", "Retorne quando estiver pronto, sem pressa"]),
+        5,
+        "intermediate",
+        JSON.stringify(["comunicação", "limites"]),
+      ],
+      [
+        "Sinal Não-verbal de Pausa",
+        "Combinar um gesto ou palavra-código com pessoas de confiança para pedir uma pausa sem precisar explicar",
+        "social",
+        JSON.stringify(["Escolha um gesto ou palavra simples com uma pessoa de confiança", "Explique o que o sinal significa antes de precisar usá-lo", "Use o sinal sempre que precisar de espaço", "Combine também um sinal de 'estou bem, só preciso de um tempo'"]),
+        2,
+        "beginner",
+        JSON.stringify(["comunicação", "portátil"]),
+      ],
+    ];
+    for (const row of rows) insert.run(...row);
+  }
+
   const activeChallenges = (
     client
       .prepare("SELECT COUNT(*) as c FROM challenges WHERE isActive = 1 AND startDate <= ? AND endDate >= ?")

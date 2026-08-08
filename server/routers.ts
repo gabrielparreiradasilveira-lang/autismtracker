@@ -799,6 +799,61 @@ export const appRouter = router({
         return await crisis.getCrisisTechniquesByCategory(input.category);
       }),
   }),
+
+  techniques: router({
+    list: protectedProcedure
+      .input(z.object({
+        category: z.enum(["breathing", "grounding", "physical", "cognitive", "social"]).optional(),
+        difficulty: z.enum(["beginner", "intermediate", "advanced"]).optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const [allTechniques, userTechniques] = await Promise.all([
+          db.getTechniques(input),
+          db.getUserTechniquesByUser(ctx.user.id),
+        ]);
+
+        const userDataByTechniqueId = new Map(
+          userTechniques.map((ut) => [ut.techniqueId, ut])
+        );
+
+        return allTechniques.map((technique) => {
+          const userData = userDataByTechniqueId.get(technique.id);
+          return {
+            ...technique,
+            isFavorite: userData?.isFavorite ?? false,
+            effectiveness: userData?.effectiveness ?? null,
+            notes: userData?.notes ?? null,
+            usageCount: userData?.usageCount ?? 0,
+            lastUsed: userData?.lastUsed ?? null,
+          };
+        });
+      }),
+
+    getFavorites: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getUserFavoriteTechniques(ctx.user.id);
+    }),
+
+    toggleFavorite: protectedProcedure
+      .input(z.object({ techniqueId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return await db.toggleFavoriteTechnique(ctx.user.id, input.techniqueId);
+      }),
+
+    logUsage: protectedProcedure
+      .input(z.object({
+        techniqueId: z.number(),
+        effectiveness: z.number().min(1).max(10),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return await db.logTechniqueUsage(
+          ctx.user.id,
+          input.techniqueId,
+          input.effectiveness,
+          input.notes
+        );
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

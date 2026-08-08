@@ -19,6 +19,8 @@ import {
   routineEntries,
   routines,
   sensoryTriggers,
+  techniques,
+  userTechniques,
   users,
   userSettings,
 } from "../drizzle/schema";
@@ -718,4 +720,108 @@ export async function getUserRoutineStats(userId: number) {
     totalCompletions,
     level: Math.floor(totalPoints / 100) + 1,
   };
+}
+
+
+// ===== Self-Regulation Technique Library Functions =====
+
+export async function getTechniques(filters?: { category?: string; difficulty?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const conditions = [eq(techniques.isPublic, true)];
+  if (filters?.category) conditions.push(eq(techniques.category, filters.category));
+  if (filters?.difficulty) conditions.push(eq(techniques.difficulty, filters.difficulty));
+
+  return await db.select().from(techniques)
+    .where(and(...conditions))
+    .orderBy(techniques.category, techniques.difficulty);
+}
+
+export async function getUserTechniquesByUser(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return await db.select().from(userTechniques)
+    .where(eq(userTechniques.userId, userId));
+}
+
+export async function toggleFavoriteTechnique(userId: number, techniqueId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await db.select().from(userTechniques)
+    .where(and(eq(userTechniques.userId, userId), eq(userTechniques.techniqueId, techniqueId)))
+    .limit(1);
+
+  if (existing.length > 0) {
+    const newValue = !existing[0].isFavorite;
+    await db.update(userTechniques)
+      .set({ isFavorite: newValue })
+      .where(eq(userTechniques.id, existing[0].id));
+    return { isFavorite: newValue };
+  }
+
+  await db.insert(userTechniques).values({
+    userId,
+    techniqueId,
+    isFavorite: true,
+  });
+  return { isFavorite: true };
+}
+
+export async function logTechniqueUsage(
+  userId: number,
+  techniqueId: number,
+  effectiveness: number,
+  notes?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await db.select().from(userTechniques)
+    .where(and(eq(userTechniques.userId, userId), eq(userTechniques.techniqueId, techniqueId)))
+    .limit(1);
+
+  const now = new Date();
+
+  if (existing.length > 0) {
+    await db.update(userTechniques)
+      .set({
+        effectiveness,
+        notes: notes ?? existing[0].notes,
+        usageCount: existing[0].usageCount + 1,
+        lastUsed: now,
+      })
+      .where(eq(userTechniques.id, existing[0].id));
+    return { usageCount: existing[0].usageCount + 1 };
+  }
+
+  await db.insert(userTechniques).values({
+    userId,
+    techniqueId,
+    effectiveness,
+    notes,
+    usageCount: 1,
+    lastUsed: now,
+  });
+  return { usageCount: 1 };
+}
+
+export async function getUserFavoriteTechniques(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db.select().from(userTechniques)
+    .innerJoin(techniques, eq(userTechniques.techniqueId, techniques.id))
+    .where(and(eq(userTechniques.userId, userId), eq(userTechniques.isFavorite, true)));
+
+  return rows.map(({ techniques: technique, user_techniques: userTechnique }) => ({
+    ...technique,
+    isFavorite: userTechnique.isFavorite,
+    effectiveness: userTechnique.effectiveness,
+    notes: userTechnique.notes,
+    usageCount: userTechnique.usageCount,
+    lastUsed: userTechnique.lastUsed,
+  }));
 }
