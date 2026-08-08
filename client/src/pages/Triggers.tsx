@@ -11,6 +11,23 @@ import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
 import { toast } from "sonner";
+
+const categoryLabels: Record<string, string> = {
+  sound: "Som",
+  light: "Luz",
+  texture: "Textura",
+  smell: "Cheiro",
+  taste: "Sabor",
+  visual: "Visual",
+  other: "Outro",
+};
+
+const frequencyLabels: Record<string, string> = {
+  daily: "Diariamente",
+  weekly: "Semanalmente",
+  monthly: "Mensalmente",
+  rarely: "Raramente",
+};
 import {
   Dialog,
   DialogContent,
@@ -281,13 +298,13 @@ export default function Triggers() {
                       <CardTitle className="text-lg">{trigger.name}</CardTitle>
                       <div className="flex gap-2 mt-2">
                         <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
-                          {trigger.category}
+                          {categoryLabels[trigger.category] || trigger.category}
                         </span>
                         <span className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded">
                           Severidade: {trigger.severity}/10
                         </span>
                         <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded">
-                          {trigger.frequency}
+                          {frequencyLabels[trigger.frequency] || trigger.frequency}
                         </span>
                       </div>
                     </div>

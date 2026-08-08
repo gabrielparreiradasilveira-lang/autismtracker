@@ -260,6 +260,19 @@ export const appRouter = router({
           await db.updateRoutineEntry(id, ctx.user.id, data);
           return { success: true };
         }),
+
+      toggleTask: protectedProcedure
+        .input(z.object({
+          routineId: z.number(),
+          taskIndex: z.number(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          return await db.toggleRoutineTask(ctx.user.id, input.routineId, input.taskIndex);
+        }),
+
+      today: protectedProcedure.query(async ({ ctx }) => {
+        return await db.getTodayRoutineEntries(ctx.user.id);
+      }),
     }),
   }),
 

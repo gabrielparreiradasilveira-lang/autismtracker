@@ -825,3 +825,128 @@ export async function getUserFavoriteTechniques(userId: number) {
     lastUsed: userTechnique.lastUsed,
   }));
 }
+
+
+// ===== Routine Task Completion Functions =====
+
+/**
+ * Bumps totalCompletions/streak on the routine row. Only called when a
+ * day's entry newly becomes fully completed, so it can't double-count from
+ * repeated task toggles; unchecking a task after completion does not
+ * decrement, since retroactively undoing a streak is its own can of worms.
+ */
+async function recordRoutineCompletion(userId: number, routineId: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  const routineRows = await db.select().from(routines)
+    .where(and(eq(routines.id, routineId), eq(routines.userId, userId)))
+    .limit(1);
+  if (routineRows.length === 0) return;
+  const routine = routineRows[0];
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const priorCompletions = await db.select().from(routineEntries)
+    .where(and(
+      eq(routineEntries.routineId, routineId),
+      eq(routineEntries.userId, userId),
+      eq(routineEntries.completed, true)
+    ))
+    .orderBy(desc(routineEntries.date));
+
+  const previous = priorCompletions.find((entry) => {
+    const day = new Date(entry.date);
+    day.setHours(0, 0, 0, 0);
+    return day.getTime() !== today.getTime();
+  });
+
+  let newStreak = 1;
+  if (previous) {
+    const prevDay = new Date(previous.date);
+    prevDay.setHours(0, 0, 0, 0);
+    const daysDiff = Math.round((today.getTime() - prevDay.getTime()) / (1000 * 60 * 60 * 24));
+    newStreak = daysDiff === 1 ? routine.currentStreak + 1 : 1;
+  }
+
+  await db.update(routines)
+    .set({
+      totalCompletions: routine.totalCompletions + 1,
+      currentStreak: newStreak,
+      longestStreak: Math.max(routine.longestStreak, newStreak),
+    })
+    .where(eq(routines.id, routineId));
+}
+
+export async function toggleRoutineTask(userId: number, routineId: number, taskIndex: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const routineRows = await db.select().from(routines)
+    .where(and(eq(routines.id, routineId), eq(routines.userId, userId)))
+    .limit(1);
+  if (routineRows.length === 0) throw new Error("Rotina não encontrada");
+  const totalTasks = routineRows[0].tasks?.length || 0;
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  const todaysEntries = await db.select().from(routineEntries)
+    .where(and(
+      eq(routineEntries.userId, userId),
+      eq(routineEntries.routineId, routineId),
+      gte(routineEntries.date, todayStart),
+      lte(routineEntries.date, todayEnd)
+    ))
+    .limit(1);
+
+  const existing = todaysEntries[0];
+  const taskKey = String(taskIndex);
+  const currentTasks = existing?.completedTasks || [];
+  const wasCompleted = existing?.completed || false;
+
+  const newTasks = currentTasks.includes(taskKey)
+    ? currentTasks.filter((t) => t !== taskKey)
+    : [...currentTasks, taskKey];
+  const isNowCompleted = totalTasks > 0 && newTasks.length >= totalTasks;
+
+  if (existing) {
+    await db.update(routineEntries)
+      .set({ completedTasks: newTasks, completed: isNowCompleted })
+      .where(eq(routineEntries.id, existing.id));
+  } else {
+    await db.insert(routineEntries).values({
+      userId,
+      routineId,
+      date: new Date(),
+      completedTasks: newTasks,
+      completed: isNowCompleted,
+    });
+  }
+
+  if (isNowCompleted && !wasCompleted) {
+    await recordRoutineCompletion(userId, routineId);
+  }
+
+  return { completedTasks: newTasks, completed: isNowCompleted };
+}
+
+export async function getTodayRoutineEntries(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  return await db.select().from(routineEntries)
+    .where(and(
+      eq(routineEntries.userId, userId),
+      gte(routineEntries.date, todayStart),
+      lte(routineEntries.date, todayEnd)
+    ));
+}

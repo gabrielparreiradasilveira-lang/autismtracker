@@ -31,6 +31,20 @@ export default function Routines() {
   const [newTask, setNewTask] = useState("");
 
   const routinesQuery = trpc.routines.list.useQuery();
+  const todayEntriesQuery = trpc.routines.entries.today.useQuery();
+
+  const toggleTaskMutation = trpc.routines.entries.toggleTask.useMutation({
+    onSuccess: (data) => {
+      todayEntriesQuery.refetch();
+      if (data.completed) {
+        toast.success("Rotina concluída! 🎉");
+        routinesQuery.refetch();
+      }
+    },
+    onError: (error) => {
+      toast.error("Erro ao marcar tarefa: " + error.message);
+    },
+  });
 
   const createRoutineMutation = trpc.routines.create.useMutation({
     onSuccess: () => {
@@ -266,21 +280,37 @@ export default function Routines() {
               </CardContent>
             </Card>
           ) : routinesQuery.data && routinesQuery.data.length > 0 ? (
-            routinesQuery.data.map((routine) => (
+            routinesQuery.data.map((routine) => {
+              const todayEntry = todayEntriesQuery.data?.find((e) => e.routineId === routine.id);
+              const completedTasks = todayEntry?.completedTasks || [];
+              const totalTasks = routine.tasks?.length || 0;
+              const isCompletedToday = todayEntry?.completed || false;
+
+              return (
               <Card key={routine.id}>
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <CardTitle className="text-lg">{routine.title}</CardTitle>
-                      <div className="flex gap-2 mt-2">
+                      <div className="flex gap-2 mt-2 flex-wrap">
                         <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
-                          {routine.timeOfDay === 'morning' ? 'Manhã' : 
-                           routine.timeOfDay === 'afternoon' ? 'Tarde' : 
+                          {routine.timeOfDay === 'morning' ? 'Manhã' :
+                           routine.timeOfDay === 'afternoon' ? 'Tarde' :
                            routine.timeOfDay === 'evening' ? 'Noite' : 'Madrugada'}
                         </span>
                         <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded">
-                          {routine.tasks?.length || 0} tarefas
+                          {totalTasks} tarefas
                         </span>
+                        {routine.currentStreak > 0 && (
+                          <span className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded">
+                            🔥 {routine.currentStreak} dias
+                          </span>
+                        )}
+                        {isCompletedToday && (
+                          <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
+                            ✅ Concluída hoje
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -297,19 +327,38 @@ export default function Routines() {
                   {routine.description && (
                     <p className="text-sm text-gray-600 mb-3">{routine.description}</p>
                   )}
+                  {totalTasks > 0 && (
+                    <p className="text-xs text-gray-500 mb-2">
+                      {completedTasks.length} de {totalTasks} tarefas concluídas hoje
+                    </p>
+                  )}
                   <div className="space-y-2">
-                    {routine.tasks?.map((task: string, index: number) => (
-                      <div key={index} className="flex items-center gap-2 text-sm">
-                        <div className="w-5 h-5 rounded border-2 border-gray-300 flex items-center justify-center">
-                          <span className="text-xs text-gray-500">{index + 1}</span>
-                        </div>
-                        <span>{task}</span>
-                      </div>
-                    ))}
+                    {routine.tasks?.map((task: string, index: number) => {
+                      const isChecked = completedTasks.includes(String(index));
+                      return (
+                        <label
+                          key={index}
+                          className="flex items-center gap-2 text-sm cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={() =>
+                              toggleTaskMutation.mutate({ routineId: routine.id, taskIndex: index })
+                            }
+                            disabled={toggleTaskMutation.isPending}
+                            aria-label={`Marcar tarefa "${task}" da rotina ${routine.title} como ${isChecked ? "não concluída" : "concluída"}`}
+                          />
+                          <span className={isChecked ? "line-through text-gray-400" : ""}>
+                            {task}
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
-            ))
+              );
+            })
           ) : (
             <Card>
               <CardContent className="p-6 text-center">
