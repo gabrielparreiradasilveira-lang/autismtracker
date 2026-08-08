@@ -1,7 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Heart, Brain, Calendar, Shield, Activity, Settings, LogOut, BarChart3, GitBranch, Sparkles, Bell, Trophy, Users, MessageSquare, Wind } from "lucide-react";
+import { Heart, Brain, Calendar, Shield, Activity, Settings, LogOut, BarChart3, GitBranch, Sparkles, Bell, Trophy, Users, MessageSquare, Wind, ClipboardList } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 
@@ -135,6 +135,22 @@ export default function Dashboard() {
               <CardContent>
                 <p className="text-sm text-gray-600">
                   Descubra e favorite técnicas de autorregulação
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/symptoms">
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow border-2 border-transparent hover:border-indigo-200">
+              <CardHeader>
+                <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-2">
+                  <ClipboardList className="w-6 h-6 text-indigo-600" />
+                </div>
+                <CardTitle className="text-lg">Monitoramento de Sintomas</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-600">
+                  Registre e acompanhe sintomas com severidade e intervenções
                 </p>
               </CardContent>
             </Card>

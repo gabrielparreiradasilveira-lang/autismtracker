@@ -23,6 +23,7 @@ import CrisisMode from "./pages/CrisisMode";
 import EmergencyContacts from "./pages/EmergencyContacts";
 import PresetMessages from "./pages/PresetMessages";
 import TechniqueLibrary from "./pages/TechniqueLibrary";
+import Symptoms from "./pages/Symptoms";
 import SOSButton from "./components/SOSButton";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
@@ -51,6 +52,7 @@ function Router() {
       <Route path={"/emergency-contacts"} component={EmergencyContacts} />
       <Route path={"/preset-messages"} component={PresetMessages} />
       <Route path={"/techniques"} component={TechniqueLibrary} />
+      <Route path={"/symptoms"} component={Symptoms} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

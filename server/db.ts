@@ -12,6 +12,7 @@ import {
   InsertRoutine,
   InsertRoutineEntry,
   InsertSensoryTrigger,
+  InsertSymptomEntry,
   InsertUser,
   InsertUserSettings,
   moodEntries,
@@ -19,6 +20,7 @@ import {
   routineEntries,
   routines,
   sensoryTriggers,
+  symptomEntries,
   techniques,
   userTechniques,
   users,
@@ -806,6 +808,49 @@ export async function logTechniqueUsage(
     lastUsed: now,
   });
   return { usageCount: 1 };
+}
+
+// ===== Symptom Monitoring Functions =====
+
+export async function createSymptomEntry(entry: InsertSymptomEntry) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(symptomEntries).values(entry).returning({ id: symptomEntries.id });
+  return result[0];
+}
+
+export async function getSymptomEntriesByUser(
+  userId: number,
+  filters?: { symptomType?: string; days?: number }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const conditions = [eq(symptomEntries.userId, userId)];
+
+  if (filters?.symptomType) {
+    conditions.push(eq(symptomEntries.symptomType, filters.symptomType));
+  }
+
+  if (filters?.days) {
+    const since = new Date();
+    since.setDate(since.getDate() - filters.days);
+    conditions.push(gte(symptomEntries.date, since));
+  }
+
+  return await db.select().from(symptomEntries)
+    .where(and(...conditions))
+    .orderBy(desc(symptomEntries.date));
+}
+
+export async function deleteSymptomEntry(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(symptomEntries).where(
+    and(eq(symptomEntries.id, id), eq(symptomEntries.userId, userId))
+  );
 }
 
 export async function getUserFavoriteTechniques(userId: number) {

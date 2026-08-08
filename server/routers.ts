@@ -813,6 +813,66 @@ export const appRouter = router({
       }),
   }),
 
+  symptoms: router({
+    create: protectedProcedure
+      .input(z.object({
+        symptomType: z.enum([
+          "social_interaction",
+          "communication",
+          "repetitive_behavior",
+          "sensory_sensitivity",
+          "focus",
+          "executive_function",
+        ]),
+        severity: z.number().int().min(1).max(10),
+        duration: z.number().int().min(1).optional(),
+        triggers: z.array(z.string()).optional(),
+        interventions: z.array(z.string()).optional(),
+        effectiveness: z.number().int().min(1).max(10).optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const entry = await db.createSymptomEntry({
+          userId: ctx.user.id,
+          date: new Date(),
+          symptomType: input.symptomType,
+          severity: input.severity,
+          duration: input.duration ?? null,
+          triggers: input.triggers ?? null,
+          interventions: input.interventions ?? null,
+          effectiveness: input.effectiveness ?? null,
+          notes: input.notes ?? null,
+        });
+        return entry;
+      }),
+
+    list: protectedProcedure
+      .input(z.object({
+        symptomType: z.enum([
+          "social_interaction",
+          "communication",
+          "repetitive_behavior",
+          "sensory_sensitivity",
+          "focus",
+          "executive_function",
+        ]).optional(),
+        days: z.number().int().min(1).max(365).optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        return await db.getSymptomEntriesByUser(ctx.user.id, {
+          symptomType: input?.symptomType,
+          days: input?.days,
+        });
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteSymptomEntry(input.id, ctx.user.id);
+        return { success: true };
+      }),
+  }),
+
   techniques: router({
     list: protectedProcedure
       .input(z.object({
