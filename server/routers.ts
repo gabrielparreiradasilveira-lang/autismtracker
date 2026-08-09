@@ -265,14 +265,24 @@ export const appRouter = router({
         .input(z.object({
           routineId: z.number(),
           taskIndex: z.number(),
+          timezoneOffsetMinutes: z.number(),
         }))
         .mutation(async ({ ctx, input }) => {
-          return await db.toggleRoutineTask(ctx.user.id, input.routineId, input.taskIndex);
+          return await db.toggleRoutineTask(
+            ctx.user.id,
+            input.routineId,
+            input.taskIndex,
+            input.timezoneOffsetMinutes
+          );
         }),
 
-      today: protectedProcedure.query(async ({ ctx }) => {
-        return await db.getTodayRoutineEntries(ctx.user.id);
-      }),
+      today: protectedProcedure
+        .input(z.object({
+          timezoneOffsetMinutes: z.number(),
+        }))
+        .query(async ({ ctx, input }) => {
+          return await db.getTodayRoutineEntries(ctx.user.id, input.timezoneOffsetMinutes);
+        }),
     }),
   }),
 

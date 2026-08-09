@@ -879,8 +879,28 @@ export async function getUserFavoriteTechniques(userId: number) {
  * day's entry newly becomes fully completed, so it can't double-count from
  * repeated task toggles; unchecking a task after completion does not
  * decrement, since retroactively undoing a streak is its own can of worms.
+ *
+ * Day boundaries are computed in the user's own local timezone, not the
+ * server's: the server runs in UTC while users are typically UTC-3, so a
+ * naive `setHours(0,0,0,0)` on the server clock resolves "today" up to a
+ * few hours away from the user's actual local day. Callers pass
+ * `timezoneOffsetMinutes` — the value of `Date.prototype.getTimezoneOffset()`
+ * from the user's browser — so the boundary matches their real midnight.
  */
-async function recordRoutineCompletion(userId: number, routineId: number) {
+export function getUserDayRange(timezoneOffsetMinutes: number, reference: Date = new Date()) {
+  const offsetMs = timezoneOffsetMinutes * 60 * 1000;
+  // Shift the instant into the user's local wall-clock time, expressed as
+  // if it were UTC, so we can zero out hours/minutes/seconds safely.
+  const localWallClock = new Date(reference.getTime() - offsetMs);
+  localWallClock.setUTCHours(0, 0, 0, 0);
+  // Shift back to the real UTC instant that corresponds to the user's
+  // local midnight.
+  const start = new Date(localWallClock.getTime() + offsetMs);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
+  return { start, end };
+}
+
+async function recordRoutineCompletion(userId: number, routineId: number, timezoneOffsetMinutes: number) {
   const db = await getDb();
   if (!db) return;
 
@@ -890,8 +910,7 @@ async function recordRoutineCompletion(userId: number, routineId: number) {
   if (routineRows.length === 0) return;
   const routine = routineRows[0];
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const { start: todayStart } = getUserDayRange(timezoneOffsetMinutes);
 
   const priorCompletions = await db.select().from(routineEntries)
     .where(and(
@@ -902,16 +921,14 @@ async function recordRoutineCompletion(userId: number, routineId: number) {
     .orderBy(desc(routineEntries.date));
 
   const previous = priorCompletions.find((entry) => {
-    const day = new Date(entry.date);
-    day.setHours(0, 0, 0, 0);
-    return day.getTime() !== today.getTime();
+    const { start: entryDayStart } = getUserDayRange(timezoneOffsetMinutes, new Date(entry.date));
+    return entryDayStart.getTime() !== todayStart.getTime();
   });
 
   let newStreak = 1;
   if (previous) {
-    const prevDay = new Date(previous.date);
-    prevDay.setHours(0, 0, 0, 0);
-    const daysDiff = Math.round((today.getTime() - prevDay.getTime()) / (1000 * 60 * 60 * 24));
+    const { start: prevDayStart } = getUserDayRange(timezoneOffsetMinutes, new Date(previous.date));
+    const daysDiff = Math.round((todayStart.getTime() - prevDayStart.getTime()) / (1000 * 60 * 60 * 24));
     newStreak = daysDiff === 1 ? routine.currentStreak + 1 : 1;
   }
 
@@ -924,7 +941,12 @@ async function recordRoutineCompletion(userId: number, routineId: number) {
     .where(eq(routines.id, routineId));
 }
 
-export async function toggleRoutineTask(userId: number, routineId: number, taskIndex: number) {
+export async function toggleRoutineTask(
+  userId: number,
+  routineId: number,
+  taskIndex: number,
+  timezoneOffsetMinutes: number
+) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -934,10 +956,7 @@ export async function toggleRoutineTask(userId: number, routineId: number, taskI
   if (routineRows.length === 0) throw new Error("Rotina não encontrada");
   const totalTasks = routineRows[0].tasks?.length || 0;
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
+  const { start: todayStart, end: todayEnd } = getUserDayRange(timezoneOffsetMinutes);
 
   const todaysEntries = await db.select().from(routineEntries)
     .where(and(
@@ -973,20 +992,17 @@ export async function toggleRoutineTask(userId: number, routineId: number, taskI
   }
 
   if (isNowCompleted && !wasCompleted) {
-    await recordRoutineCompletion(userId, routineId);
+    await recordRoutineCompletion(userId, routineId, timezoneOffsetMinutes);
   }
 
   return { completedTasks: newTasks, completed: isNowCompleted };
 }
 
-export async function getTodayRoutineEntries(userId: number) {
+export async function getTodayRoutineEntries(userId: number, timezoneOffsetMinutes: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
+  const { start: todayStart, end: todayEnd } = getUserDayRange(timezoneOffsetMinutes);
 
   return await db.select().from(routineEntries)
     .where(and(

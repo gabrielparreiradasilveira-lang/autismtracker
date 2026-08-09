@@ -31,7 +31,9 @@ export default function Routines() {
   const [newTask, setNewTask] = useState("");
 
   const routinesQuery = trpc.routines.list.useQuery();
-  const todayEntriesQuery = trpc.routines.entries.today.useQuery();
+  const todayEntriesQuery = trpc.routines.entries.today.useQuery({
+    timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+  });
 
   const toggleTaskMutation = trpc.routines.entries.toggleTask.useMutation({
     onSuccess: (data) => {
@@ -343,7 +345,11 @@ export default function Routines() {
                           <Checkbox
                             checked={isChecked}
                             onCheckedChange={() =>
-                              toggleTaskMutation.mutate({ routineId: routine.id, taskIndex: index })
+                              toggleTaskMutation.mutate({
+                                routineId: routine.id,
+                                taskIndex: index,
+                                timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+                              })
                             }
                             disabled={toggleTaskMutation.isPending}
                             aria-label={`Marcar tarefa "${task}" da rotina ${routine.title} como ${isChecked ? "não concluída" : "concluída"}`}
