@@ -1,13 +1,20 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Heart, Brain, Calendar, Shield, Activity, Settings, LogOut, BarChart3, GitBranch, Sparkles, Bell, Trophy, Users, MessageSquare, Wind, ClipboardList } from "lucide-react";
+import { Heart, Brain, Calendar, Shield, Activity, Settings, LogOut, BarChart3, GitBranch, Sparkles, Bell, Trophy, Users, MessageSquare, Wind, ClipboardList, Flame, Star } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 
 export default function Dashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const logoutMutation = trpc.auth.logout.useMutation();
+
+  const gameStatsQuery = trpc.gamification.getStats.useQuery(undefined, { enabled: !!user });
+  const unreadCountQuery = trpc.notifications.getUnreadCount.useQuery(undefined, { enabled: !!user });
+  const symptomsWeekQuery = trpc.symptoms.list.useQuery({ days: 7 }, { enabled: !!user });
+  const routineStatsQuery = trpc.routineAnalytics.getUserStats.useQuery(undefined, { enabled: !!user });
+
+  const gameStats = gameStatsQuery.data as { totalPoints?: number; level?: number } | null | undefined;
 
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
@@ -56,6 +63,71 @@ export default function Dashboard() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
           <p className="text-gray-600">Bem-vindo ao seu espaço de bem-estar</p>
+        </div>
+
+        {/* Summary tiles */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <Link href="/achievements">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center shrink-0">
+                  <Star className="w-5 h-5 text-yellow-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Nível {gameStats?.level ?? 1}</p>
+                  <p className="text-lg font-bold text-gray-900">{gameStats?.totalPoints ?? 0} pts</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/routines">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center shrink-0">
+                  <Flame className="w-5 h-5 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Melhor sequência</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {routineStatsQuery.data?.bestStreak ?? 0} dias
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/symptoms">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
+                  <ClipboardList className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Sintomas</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {symptomsWeekQuery.data?.length ?? 0} esta semana
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/notifications">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
+                  <Bell className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Notificações</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {unreadCountQuery.data?.count ?? 0} não lidas
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         {/* Quick Actions Grid */}
@@ -306,18 +378,6 @@ export default function Dashboard() {
             </Link>
           </div>
         </div>
-
-        {/* Recent Activity */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Atividade Recente</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-gray-600">
-              Suas atividades recentes aparecerão aqui
-            </p>
-          </CardContent>
-        </Card>
       </main>
     </div>
   );

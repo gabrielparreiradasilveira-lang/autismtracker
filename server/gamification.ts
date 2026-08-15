@@ -3,7 +3,12 @@
  * Handles badges, challenges, rewards, and user game stats
  */
 
-import { getDb } from "./db";
+import {
+  getDb,
+  countMoodEntriesInRange,
+  countCompletedRoutineEntriesInRange,
+  countExerciseSessionsInRange,
+} from "./db";
 import { sql, eq, and, gte, lte } from "drizzle-orm";
 
 /**
@@ -470,6 +475,95 @@ export async function updateUserStreak(userId: number, isActive: boolean) {
   } catch (error) {
     console.error("[Gamification] Error updating streak:", error);
     return null;
+  }
+}
+
+/**
+ * Unlock a badge by its seeded name (server/seeds.ts), so callers don't
+ * need to know/hardcode badge ids. No-op if the name doesn't match a
+ * seeded badge; delegates to unlockBadge, which is already idempotent.
+ */
+export async function unlockBadgeByName(userId: number, name: string) {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const badgeResult = await db.execute(
+      sql`SELECT id FROM badges WHERE name = ${name} LIMIT 1`
+    );
+
+    if (!badgeResult || !Array.isArray(badgeResult) || badgeResult.length === 0) {
+      return null;
+    }
+
+    const badgeId = (badgeResult[0] as any).id;
+    return await unlockBadge(userId, badgeId);
+  } catch (error) {
+    console.error("[Gamification] Error unlocking badge by name:", error);
+    return null;
+  }
+}
+
+/**
+ * Central hook other features call whenever the user does something that
+ * should count toward gamification: bumps the global activity streak,
+ * awards points, and unlocks the two badges tied to global progress
+ * (reaching level 10, reaching a 30-day streak). Per-feature badges
+ * (first mood entry, routine milestones, etc.) are checked by the caller,
+ * since only it knows the feature-specific counts involved.
+ */
+export async function recordActivity(userId: number, points: number) {
+  const streakResult = await updateUserStreak(userId, true);
+  const pointsResult = await addPoints(userId, points);
+
+  if (pointsResult && pointsResult.newLevel >= 10) {
+    await unlockBadgeByName(userId, "Lenda do Bem-estar");
+  }
+  if (streakResult && streakResult.currentStreak >= 30) {
+    await unlockBadgeByName(userId, "Constância Total");
+  }
+
+  return { points: pointsResult, streak: streakResult };
+}
+
+const CHALLENGE_COUNTERS: Record<
+  string,
+  (userId: number, start: Date, end: Date) => Promise<number>
+> = {
+  mood: countMoodEntriesInRange,
+  routine: countCompletedRoutineEntriesInRange,
+  breathing: (userId, start, end) => countExerciseSessionsInRange(userId, "breathing", start, end),
+};
+
+/**
+ * Recomputes and syncs progress on every active "count"-goal challenge in
+ * the given category (e.g. "Semana do Humor" for category "mood"), using
+ * each challenge's own date window. Safe to call after every relevant
+ * action — updateChallengeProgress is idempotent per challenge.
+ */
+export async function syncCountChallenges(userId: number, category: string) {
+  const counter = CHALLENGE_COUNTERS[category];
+  if (!counter) return;
+
+  const db = await getDb();
+  if (!db) return;
+
+  try {
+    const now = new Date();
+    const activeChallenges = await db.execute(
+      sql`SELECT id, startDate, endDate FROM challenges
+          WHERE isActive = 1 AND category = ${category} AND goalType = 'count'
+          AND startDate <= ${now} AND endDate >= ${now}`
+    );
+
+    if (!activeChallenges || !Array.isArray(activeChallenges)) return;
+
+    for (const challenge of activeChallenges as any[]) {
+      const count = await counter(userId, new Date(challenge.startDate), new Date(challenge.endDate));
+      await updateChallengeProgress(userId, challenge.id, count);
+    }
+  } catch (error) {
+    console.error("[Gamification] Error syncing count challenges:", error);
   }
 }
 

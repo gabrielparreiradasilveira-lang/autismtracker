@@ -93,6 +93,21 @@ export const appRouter = router({
           triggers: input.triggers || null,
           date: new Date(),
         });
+
+        await gamification.recordActivity(ctx.user.id, 5);
+        await gamification.syncCountChallenges(ctx.user.id, "mood");
+
+        const [entryCount, moodStreak] = await Promise.all([
+          db.getMoodEntriesByUser(ctx.user.id).then((entries) => entries.length),
+          db.getMoodStreak(ctx.user.id),
+        ]);
+        if (entryCount === 1) {
+          await gamification.unlockBadgeByName(ctx.user.id, "Primeiro Passo");
+        }
+        if (moodStreak >= 7) {
+          await gamification.unlockBadgeByName(ctx.user.id, "Semana Consciente");
+        }
+
         return { success: true };
       }),
 
@@ -268,12 +283,30 @@ export const appRouter = router({
           timezoneOffsetMinutes: z.number(),
         }))
         .mutation(async ({ ctx, input }) => {
-          return await db.toggleRoutineTask(
+          const result = await db.toggleRoutineTask(
             ctx.user.id,
             input.routineId,
             input.taskIndex,
             input.timezoneOffsetMinutes
           );
+
+          if (result.completed) {
+            const userRoutines = await db.getRoutinesByUser(ctx.user.id);
+            const routine = userRoutines.find((r) => r.id === input.routineId);
+
+            await gamification.recordActivity(ctx.user.id, routine?.points ?? 10);
+            await gamification.syncCountChallenges(ctx.user.id, "routine");
+
+            const totalCompletions = userRoutines.reduce((sum, r) => sum + r.totalCompletions, 0);
+            if (totalCompletions >= 10) {
+              await gamification.unlockBadgeByName(ctx.user.id, "Mestre da Rotina");
+            }
+            if (routine && routine.currentStreak >= 7) {
+              await gamification.unlockBadgeByName(ctx.user.id, "Sequência de Fogo");
+            }
+          }
+
+          return result;
         }),
 
       today: protectedProcedure
@@ -298,17 +331,33 @@ export const appRouter = router({
         completedAt: z.date().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        const completed = input.completed ?? true;
+
         await db.createExerciseSession({
           userId: ctx.user.id,
           exerciseType: input.exerciseType,
           duration: input.duration,
           pattern: input.pattern,
-          completed: input.completed ?? true,
+          completed,
           rating: input.rating,
           notes: input.notes,
           startedAt: new Date(),
           completedAt: input.completedAt,
         });
+
+        if (completed && input.exerciseType === "breathing") {
+          await gamification.recordActivity(ctx.user.id, 5);
+          await gamification.syncCountChallenges(ctx.user.id, "breathing");
+
+          const sessions = await db.getExerciseSessionsByUser(ctx.user.id);
+          const breathingCount = sessions.filter(
+            (s) => s.exerciseType === "breathing" && s.completed
+          ).length;
+          if (breathingCount >= 5) {
+            await gamification.unlockBadgeByName(ctx.user.id, "Respirador Zen");
+          }
+        }
+
         return { success: true };
       }),
 
@@ -685,13 +734,18 @@ export const appRouter = router({
         techniquesUsed: z.array(z.string()),
         notes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
-        return await crisis.resolveCrisisEvent(
+      .mutation(async ({ ctx, input }) => {
+        const result = await crisis.resolveCrisisEvent(
           input.crisisId,
           input.duration,
           input.techniquesUsed,
           input.notes
         );
+
+        await gamification.recordActivity(ctx.user.id, 15);
+        await gamification.unlockBadgeByName(ctx.user.id, "Superação");
+
+        return result;
       }),
 
     getCrisisEvents: protectedProcedure
@@ -881,6 +935,22 @@ export const appRouter = router({
         await db.deleteSymptomEntry(input.id, ctx.user.id);
         return { success: true };
       }),
+
+    getAnalytics: protectedProcedure
+      .input(z.object({
+        days: z.number().int().min(1).max(365).default(30),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        return await db.getSymptomAnalytics(ctx.user.id, input?.days ?? 30);
+      }),
+
+    getMoodCorrelation: protectedProcedure
+      .input(z.object({
+        days: z.number().int().min(1).max(365).default(30),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        return await db.getSymptomMoodCorrelation(ctx.user.id, input?.days ?? 30);
+      }),
   }),
 
   techniques: router({
@@ -929,13 +999,21 @@ export const appRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        return await db.logTechniqueUsage(
+        const result = await db.logTechniqueUsage(
           ctx.user.id,
           input.techniqueId,
           input.effectiveness,
           input.notes
         );
+
+        await gamification.recordActivity(ctx.user.id, 5);
+
+        return result;
       }),
+
+    getAnalytics: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getTechniqueAnalytics(ctx.user.id);
+    }),
   }),
 });
 

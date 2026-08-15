@@ -36,6 +36,8 @@ export default function Analytics() {
   
   const patternsQuery = trpc.analytics.patterns.useQuery();
   const trendsQuery = trpc.analytics.trends.useQuery({ days: 30 });
+  const symptomAnalyticsQuery = trpc.symptoms.getAnalytics.useQuery({ days: 30 });
+  const techniqueAnalyticsQuery = trpc.techniques.getAnalytics.useQuery();
 
   const [, navigate] = useLocation();
   useEffect(() => {
@@ -141,6 +143,34 @@ export default function Analytics() {
         display: false,
       },
     },
+  };
+
+  const symptomAnalytics = symptomAnalyticsQuery.data;
+  const techniqueAnalytics = techniqueAnalyticsQuery.data;
+
+  const symptomTypeLabels: Record<string, string> = {
+    social_interaction: "Interação Social",
+    communication: "Comunicação",
+    repetitive_behavior: "Comportamento Repetitivo",
+    sensory_sensitivity: "Sensibilidade Sensorial",
+    focus: "Foco e Atenção",
+    executive_function: "Função Executiva",
+  };
+
+  const severityTrendChartData = {
+    labels: symptomAnalytics?.severityTrend.map((d) =>
+      new Date(d.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+    ) || [],
+    datasets: [
+      {
+        label: "Severidade Média",
+        data: symptomAnalytics?.severityTrend.map((d) => d.averageSeverity) || [],
+        borderColor: "rgb(79, 70, 229)",
+        backgroundColor: "rgba(79, 70, 229, 0.1)",
+        fill: true,
+        tension: 0.4,
+      },
+    ],
   };
 
   return (
@@ -338,6 +368,110 @@ export default function Analytics() {
               </Link>
             </CardContent>
           </Card>
+        )}
+
+        {/* Symptoms */}
+        {symptomAnalytics && symptomAnalytics.totalEntries > 0 && (
+          <div className="space-y-6 mt-8">
+            <h2 className="text-2xl font-bold text-gray-900">Sintomas</h2>
+
+            {symptomAnalytics.severityTrend.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Tendência de Severidade (Últimos 30 Dias)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-80">
+                    <Line data={severityTrendChartData} options={chartOptions} />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="grid md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Severidade Média por Tipo</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {symptomAnalytics.averageSeverityByType.map((item) => (
+                    <div key={item.symptomType} className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600">
+                        {symptomTypeLabels[item.symptomType] || item.symptomType}
+                      </span>
+                      <span className="font-semibold">
+                        {item.averageSeverity}/10 ({item.count}x)
+                      </span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Efetividade das Intervenções</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {symptomAnalytics.averageEffectiveness != null ? (
+                    <>
+                      <div className="text-3xl font-bold text-teal-600">
+                        {symptomAnalytics.averageEffectiveness}/10
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Média de {symptomAnalytics.interventionsLoggedCount} registro(s) com intervenção
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-600">
+                      Registre intervenções e sua efetividade em Monitoramento de Sintomas para ver esta análise.
+                    </p>
+                  )}
+                  {symptomAnalytics.topTriggers.length > 0 && (
+                    <div className="mt-4">
+                      <p className="text-sm font-medium text-gray-700 mb-2">Gatilhos mais frequentes:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {symptomAnalytics.topTriggers.map((t) => (
+                          <span
+                            key={t.trigger}
+                            className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded"
+                          >
+                            {t.trigger} ({t.count})
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* Techniques */}
+        {techniqueAnalytics && techniqueAnalytics.totalTechniquesUsed > 0 && (
+          <div className="space-y-6 mt-8">
+            <h2 className="text-2xl font-bold text-gray-900">Técnicas mais eficazes</h2>
+            <Card>
+              <CardContent className="p-6">
+                {techniqueAnalytics.mostEffective.length > 0 ? (
+                  <div className="space-y-3">
+                    {techniqueAnalytics.mostEffective.map((technique) => (
+                      <div key={technique.id} className="flex justify-between items-center">
+                        <span className="text-sm text-gray-700">{technique.title}</span>
+                        <span className="text-xs px-2 py-1 bg-pink-100 text-pink-700 rounded">
+                          Efetividade {technique.effectiveness}/10 · usada {technique.usageCount}x
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-600">
+                    Registre a efetividade das suas técnicas na Biblioteca de Técnicas para ver este ranking.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         )}
       </main>
     </div>

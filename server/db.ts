@@ -810,6 +810,74 @@ export async function logTechniqueUsage(
   return { usageCount: 1 };
 }
 
+// ===== Gamification Support Functions =====
+// (raw badge/points/challenge bookkeeping itself lives in server/gamification.ts;
+// these are the Drizzle-backed counting helpers it needs to decide when to award them)
+
+export async function countMoodEntriesInRange(userId: number, startDate: Date, endDate: Date) {
+  const entries = await getMoodEntriesByUser(userId, startDate, endDate);
+  return entries.length;
+}
+
+export async function countCompletedRoutineEntriesInRange(userId: number, startDate: Date, endDate: Date) {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const result = await db.select().from(routineEntries)
+    .where(and(
+      eq(routineEntries.userId, userId),
+      eq(routineEntries.completed, true),
+      gte(routineEntries.date, startDate),
+      lte(routineEntries.date, endDate)
+    ));
+  return result.length;
+}
+
+export async function countExerciseSessionsInRange(
+  userId: number,
+  exerciseType: string,
+  startDate: Date,
+  endDate: Date
+) {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const result = await db.select().from(exerciseSessions)
+    .where(and(
+      eq(exerciseSessions.userId, userId),
+      eq(exerciseSessions.exerciseType, exerciseType),
+      eq(exerciseSessions.completed, true),
+      gte(exerciseSessions.startedAt, startDate),
+      lte(exerciseSessions.startedAt, endDate)
+    ));
+  return result.length;
+}
+
+/**
+ * Number of distinct local days (UTC-based) with at least one mood entry,
+ * counting backwards from today without gaps. Used to unlock the
+ * "Semana Consciente" badge at 7 consecutive days.
+ */
+export async function getMoodStreak(userId: number) {
+  const entries = await getMoodEntriesByUser(userId);
+  if (entries.length === 0) return 0;
+
+  const daySet = new Set<number>();
+  for (const entry of entries) {
+    const { start } = getUserDayRange(0, new Date(entry.date));
+    daySet.add(start.getTime());
+  }
+
+  const { start: todayStart } = getUserDayRange(0);
+  let streak = 0;
+  let expected = todayStart.getTime();
+  while (daySet.has(expected)) {
+    streak++;
+    expected -= 24 * 60 * 60 * 1000;
+  }
+  return streak;
+}
+
 // ===== Symptom Monitoring Functions =====
 
 export async function createSymptomEntry(entry: InsertSymptomEntry) {
@@ -851,6 +919,176 @@ export async function deleteSymptomEntry(id: number, userId: number) {
   await db.delete(symptomEntries).where(
     and(eq(symptomEntries.id, id), eq(symptomEntries.userId, userId))
   );
+}
+
+export async function getSymptomAnalytics(userId: number, days: number = 30) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+
+  const entries = await db.select().from(symptomEntries)
+    .where(and(eq(symptomEntries.userId, userId), gte(symptomEntries.date, startDate)))
+    .orderBy(desc(symptomEntries.date));
+
+  const byType: Record<string, { total: number; count: number }> = {};
+  const byDay: Record<string, { total: number; count: number }> = {};
+  const triggerCounts: Record<string, number> = {};
+  let effectivenessTotal = 0;
+  let effectivenessCount = 0;
+
+  for (const entry of entries) {
+    if (!byType[entry.symptomType]) byType[entry.symptomType] = { total: 0, count: 0 };
+    byType[entry.symptomType].total += entry.severity;
+    byType[entry.symptomType].count++;
+
+    const dayKey = new Date(entry.date).toISOString().split("T")[0];
+    if (!byDay[dayKey]) byDay[dayKey] = { total: 0, count: 0 };
+    byDay[dayKey].total += entry.severity;
+    byDay[dayKey].count++;
+
+    if (entry.effectiveness != null) {
+      effectivenessTotal += entry.effectiveness;
+      effectivenessCount++;
+    }
+
+    for (const trigger of entry.triggers || []) {
+      triggerCounts[trigger] = (triggerCounts[trigger] || 0) + 1;
+    }
+  }
+
+  const averageSeverityByType = Object.entries(byType).map(([symptomType, data]) => ({
+    symptomType,
+    averageSeverity: Math.round((data.total / data.count) * 10) / 10,
+    count: data.count,
+  }));
+
+  const severityTrend = Object.entries(byDay)
+    .map(([date, data]) => ({
+      date,
+      averageSeverity: Math.round((data.total / data.count) * 10) / 10,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const topTriggers = Object.entries(triggerCounts)
+    .map(([trigger, count]) => ({ trigger, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  return {
+    totalEntries: entries.length,
+    averageSeverityByType,
+    severityTrend,
+    averageEffectiveness: effectivenessCount > 0
+      ? Math.round((effectivenessTotal / effectivenessCount) * 10) / 10
+      : null,
+    interventionsLoggedCount: effectivenessCount,
+    topTriggers,
+  };
+}
+
+/**
+ * Compares average mood on days with a high-severity symptom (>=7) against
+ * days with only lower-severity symptoms, mirroring the shape of
+ * getRoutineMoodCorrelations for the routine<->mood pairing.
+ */
+export async function getSymptomMoodCorrelation(userId: number, days: number = 30) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+
+  const symptomData = await db.select().from(symptomEntries)
+    .where(and(eq(symptomEntries.userId, userId), gte(symptomEntries.date, startDate)));
+
+  const moodData = await db.select().from(moodEntries)
+    .where(and(eq(moodEntries.userId, userId), gte(moodEntries.date, startDate)));
+
+  const dailyData: Record<string, { maxSeverity: number; avgMood: number }> = {};
+
+  for (const entry of symptomData) {
+    const dateKey = new Date(entry.date).toISOString().split("T")[0];
+    if (!dailyData[dateKey]) dailyData[dateKey] = { maxSeverity: 0, avgMood: 0 };
+    dailyData[dateKey].maxSeverity = Math.max(dailyData[dateKey].maxSeverity, entry.severity);
+  }
+
+  for (const entry of moodData) {
+    const dateKey = new Date(entry.date).toISOString().split("T")[0];
+    if (dailyData[dateKey]) {
+      dailyData[dateKey].avgMood = entry.moodLevel;
+    }
+  }
+
+  const daysWithBoth = Object.values(dailyData).filter((d) => d.avgMood > 0);
+
+  if (daysWithBoth.length < 3) {
+    return {
+      hasSufficientData: false,
+      message: "Continue registrando sintomas e humor para ver correlações.",
+      avgMoodHighSeverity: null,
+      avgMoodLowSeverity: null,
+      highSeverityDayCount: 0,
+      lowSeverityDayCount: 0,
+    };
+  }
+
+  const highSeverityDays = daysWithBoth.filter((d) => d.maxSeverity >= 7);
+  const lowSeverityDays = daysWithBoth.filter((d) => d.maxSeverity < 7);
+
+  const avgMoodHighSeverity = highSeverityDays.length > 0
+    ? highSeverityDays.reduce((sum, d) => sum + d.avgMood, 0) / highSeverityDays.length
+    : null;
+  const avgMoodLowSeverity = lowSeverityDays.length > 0
+    ? lowSeverityDays.reduce((sum, d) => sum + d.avgMood, 0) / lowSeverityDays.length
+    : null;
+
+  return {
+    hasSufficientData: true,
+    message: `Análise dos últimos ${days} dias`,
+    avgMoodHighSeverity: avgMoodHighSeverity != null ? Math.round(avgMoodHighSeverity * 10) / 10 : null,
+    avgMoodLowSeverity: avgMoodLowSeverity != null ? Math.round(avgMoodLowSeverity * 10) / 10 : null,
+    highSeverityDayCount: highSeverityDays.length,
+    lowSeverityDayCount: lowSeverityDays.length,
+  };
+}
+
+export async function getTechniqueAnalytics(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db.select().from(userTechniques)
+    .innerJoin(techniques, eq(userTechniques.techniqueId, techniques.id))
+    .where(and(eq(userTechniques.userId, userId), gte(userTechniques.usageCount, 1)));
+
+  const items = rows.map(({ techniques: technique, user_techniques: ut }) => ({
+    id: technique.id,
+    title: technique.title,
+    category: technique.category,
+    usageCount: ut.usageCount,
+    effectiveness: ut.effectiveness,
+    lastUsed: ut.lastUsed,
+  }));
+
+  const mostUsed = [...items].sort((a, b) => b.usageCount - a.usageCount).slice(0, 5);
+
+  const withEffectiveness = items.filter((i) => i.effectiveness != null);
+  const mostEffective = [...withEffectiveness]
+    .sort((a, b) => (b.effectiveness ?? 0) - (a.effectiveness ?? 0))
+    .slice(0, 5);
+
+  return {
+    totalTechniquesUsed: items.length,
+    totalUsageCount: items.reduce((sum, i) => sum + i.usageCount, 0),
+    averageEffectiveness: withEffectiveness.length > 0
+      ? Math.round(
+          (withEffectiveness.reduce((sum, i) => sum + (i.effectiveness ?? 0), 0) / withEffectiveness.length) * 10
+        ) / 10
+      : null,
+    mostUsed,
+    mostEffective,
+  };
 }
 
 export async function getUserFavoriteTechniques(userId: number) {

@@ -10,6 +10,7 @@ export default function Correlations() {
   const { user, isAuthenticated, loading } = useAuth();
   
   const correlationsQuery = trpc.analytics.correlations.useQuery();
+  const symptomCorrelationQuery = trpc.symptoms.getMoodCorrelation.useQuery({ days: 30 });
 
   const [, navigate] = useLocation();
   useEffect(() => {
@@ -253,6 +254,55 @@ export default function Correlations() {
               </Link>
             </CardContent>
           </Card>
+        )}
+
+        {/* Symptom <-> Mood Correlation */}
+        {symptomCorrelationQuery.data?.hasSufficientData && (
+          <div className="space-y-4 mt-8">
+            <h2 className="text-xl font-semibold">Sintomas × Humor</h2>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base font-medium text-gray-600">
+                  Humor médio em dias com sintomas intensos vs. leves
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-gray-600 mb-1">
+                      Dias com sintoma severo (≥7/10) — {symptomCorrelationQuery.data.highSeverityDayCount} dia(s)
+                    </div>
+                    <div className="text-3xl font-bold text-red-600">
+                      {symptomCorrelationQuery.data.avgMoodHighSeverity ?? "—"}
+                      {symptomCorrelationQuery.data.avgMoodHighSeverity != null && (
+                        <span className="text-sm font-normal text-gray-500">/10</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-600 mb-1">
+                      Dias com sintoma leve (&lt;7/10) — {symptomCorrelationQuery.data.lowSeverityDayCount} dia(s)
+                    </div>
+                    <div className="text-3xl font-bold text-green-600">
+                      {symptomCorrelationQuery.data.avgMoodLowSeverity ?? "—"}
+                      {symptomCorrelationQuery.data.avgMoodLowSeverity != null && (
+                        <span className="text-sm font-normal text-gray-500">/10</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {symptomCorrelationQuery.data.avgMoodHighSeverity != null &&
+                  symptomCorrelationQuery.data.avgMoodLowSeverity != null && (
+                    <p className="text-sm text-gray-700 mt-4 p-3 bg-gray-50 rounded-lg">
+                      {symptomCorrelationQuery.data.avgMoodHighSeverity <
+                      symptomCorrelationQuery.data.avgMoodLowSeverity - 1
+                        ? "Seu humor tende a cair em dias com sintomas mais intensos. Considere priorizar intervenções nesses dias."
+                        : "Não há uma queda clara de humor associada a sintomas mais intensos até agora."}
+                    </p>
+                  )}
+              </CardContent>
+            </Card>
+          </div>
         )}
       </main>
     </div>

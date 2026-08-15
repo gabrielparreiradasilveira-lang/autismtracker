@@ -9,6 +9,7 @@
     "dev:client": "vite",
     "build": "vite build",
     "start": "cross-env NODE_ENV=production tsx server/index.ts",
+    "pretest": "node -e \"['data/test.db','data/test.db-wal','data/test.db-shm'].forEach(f=>require('fs').rmSync(f,{force:true}))\"",
     "test": "vitest run",
     "check": "tsc --noEmit"
   },
