@@ -1,4 +1,5 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
+import PageLoader from "@/components/PageLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Heart, Brain, Calendar, Shield, Activity, Settings, LogOut, BarChart3, GitBranch, Sparkles, Bell, Trophy, Users, MessageSquare, Wind, ClipboardList, Flame, Star } from "lucide-react";
@@ -6,7 +7,7 @@ import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 
 export default function Dashboard() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useRequireAuth();
   const logoutMutation = trpc.auth.logout.useMutation();
 
   const gameStatsQuery = trpc.gamification.getStats.useQuery(undefined, { enabled: !!user });
@@ -21,35 +22,26 @@ export default function Dashboard() {
     window.location.href = "/";
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <PageLoader />;
 
-  if (!isAuthenticated || !user) {
-    window.location.href = "/";
-    return null;
-  }
+  if (!isAuthenticated || !user) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="container mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
               <Heart className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold text-gray-900">Apoio Autismo</span>
           </div>
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-gray-600">Olá, {user.name || "Usuário"}!</span>
+          <div className="flex items-center gap-2 sm:gap-4">
+            {/* Nomes longos espremeriam o botão Sair num celular estreito. */}
+            <span className="hidden sm:inline text-sm text-gray-600 truncate max-w-[12rem]">
+              Olá, {user.name || "Usuário"}!
+            </span>
             <Button variant="ghost" size="sm" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" />
               Sair

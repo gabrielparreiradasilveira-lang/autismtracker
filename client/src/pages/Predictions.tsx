@@ -1,32 +1,18 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
+import PageLoader from "@/components/PageLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sparkles, ArrowLeft, TrendingUp, AlertTriangle, Info } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { useEffect } from "react";
 
 export default function Predictions() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useRequireAuth();
   
   const predictionsQuery = trpc.analytics.predictions.useQuery();
   const patternsQuery = trpc.analytics.patterns.useQuery();
 
-  const [, navigate] = useLocation();
-  useEffect(() => {
-    if (!loading && !isAuthenticated) navigate("/");
-  }, [loading, isAuthenticated, navigate]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <PageLoader />;
 
 
   if (!isAuthenticated || !user) return null;

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/_core/hooks/useAuth';
+import { useRequireAuth } from '@/_core/hooks/useRequireAuth';
+import PageLoader from '@/components/PageLoader';
 import { trpc } from '@/lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export default function CrisisMode() {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading } = useRequireAuth();
   const [crisisActive, setCrisisActive] = useState(false);
   const [crisisStartTime, setCrisisStartTime] = useState<Date | null>(null);
   const [activeCrisisId, setActiveCrisisId] = useState<number | null>(null);
@@ -117,6 +118,10 @@ export default function CrisisMode() {
       setUsedTechniques([...usedTechniques, techniqueId]);
     }
   };
+
+  if (loading) return <PageLoader />;
+
+  if (!isAuthenticated || !user) return null;
 
   if (!crisisActive) {
     return (

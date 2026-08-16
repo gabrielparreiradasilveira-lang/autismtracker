@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/_core/hooks/useAuth';
+import { useRequireAuth } from '@/_core/hooks/useRequireAuth';
+import PageLoader from '@/components/PageLoader';
 import { trpc } from '@/lib/trpc';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bell, CheckCircle, Trash2, Settings, Zap } from 'lucide-react';
 
 export default function NotificationCenter() {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading } = useRequireAuth();
   const [selectedNotification, setSelectedNotification] = useState<any>(null);
   
   const {
@@ -105,6 +106,10 @@ export default function NotificationCenter() {
     };
     return colors[type] || 'bg-gray-50 border-gray-200';
   };
+
+  if (loading) return <PageLoader />;
+
+  if (!isAuthenticated || !user) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 md:p-8">

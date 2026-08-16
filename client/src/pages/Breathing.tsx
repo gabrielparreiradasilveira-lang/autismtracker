@@ -1,4 +1,5 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
+import PageLoader from "@/components/PageLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Brain, ArrowLeft, Play, Pause, RotateCcw } from "lucide-react";
@@ -47,7 +48,7 @@ const EXERCISE_TYPES = [
 ];
 
 export default function Breathing() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useRequireAuth();
   const [selectedExercise, setSelectedExercise] = useState<typeof EXERCISE_TYPES[0] | null>(null);
   const [isActive, setIsActive] = useState(false);
   const [currentPhase, setCurrentPhase] = useState(0);
@@ -133,21 +134,9 @@ export default function Breathing() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <PageLoader />;
 
-  if (!isAuthenticated || !user) {
-    window.location.href = "/";
-    return null;
-  }
+  if (!isAuthenticated || !user) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">

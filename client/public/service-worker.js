@@ -1,5 +1,7 @@
-// Service Worker para Notificações Push
-const CACHE_NAME = 'autism-support-v1';
+// Service Worker: notificações push + cache do app shell.
+// v2 purga o cache v1, que podia conter respostas de /api com dados de
+// saúde gravadas pela versão anterior deste arquivo (ver handler de fetch).
+const CACHE_NAME = 'autism-support-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -129,28 +131,57 @@ self.addEventListener('sync', (event) => {
 
 // Fetch - Network first, fallback to cache
 self.addEventListener('fetch', (event) => {
+  const request = event.request;
+
   // Apenas cache para GET requests
-  if (event.request.method !== 'GET') {
+  if (request.method !== 'GET') {
+    return;
+  }
+
+  const url = new URL(request.url);
+
+  // Nunca tocar em requisições de outra origem.
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  // As respostas da API carregam dados de saúde do usuário (humor,
+  // sintomas, crises). Guardá-las no CacheStorage as deixaria em disco e
+  // servíveis após o logout — inclusive em dispositivo compartilhado.
+  // Deixamos passar direto para a rede, sem cache.
+  if (url.pathname.startsWith('/api/')) {
     return;
   }
 
   event.respondWith(
-    fetch(event.request)
+    fetch(request)
       .then((response) => {
         // Cache successful responses
         if (response.ok) {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
+            cache.put(request, responseToCache);
           });
         }
         return response;
       })
-      .catch(() => {
-        // Fallback to cache
-        return caches.match(event.request).then((response) => {
-          return response || new Response('Offline - Resource not available', { status: 503 });
-        });
+      .catch(async () => {
+        const cached = await caches.match(request);
+        if (cached) {
+          return cached;
+        }
+
+        // Rotas do SPA (/mood, /symptoms...) não têm entrada própria no
+        // cache: offline, servimos o app shell e o roteador resolve o
+        // caminho no cliente.
+        if (request.mode === 'navigate') {
+          const shell = await caches.match('/index.html');
+          if (shell) {
+            return shell;
+          }
+        }
+
+        return new Response('Offline - Resource not available', { status: 503 });
       })
   );
 });

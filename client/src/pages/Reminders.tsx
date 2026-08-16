@@ -1,4 +1,5 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
+import PageLoader from "@/components/PageLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 export default function Reminders() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useRequireAuth();
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -88,21 +89,9 @@ export default function Reminders() {
     toast.success("Horário sugerido aplicado!");
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <PageLoader />;
 
-  if (!isAuthenticated || !user) {
-    window.location.href = "/";
-    return null;
-  }
+  if (!isAuthenticated || !user) return null;
 
   const typeLabels: Record<string, string> = {
     mood_diary: "Diário de Humor",

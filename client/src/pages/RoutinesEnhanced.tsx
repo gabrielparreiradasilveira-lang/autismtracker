@@ -1,4 +1,5 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
+import PageLoader from "@/components/PageLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,7 +10,7 @@ import { RoutineStreaks } from "@/components/RoutineStreaks";
 import { RoutineProgressChart } from "@/components/RoutineProgressChart";
 
 export default function RoutinesEnhanced() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useRequireAuth();
 
   const streaksQuery = trpc.routineAnalytics.getStreaks.useQuery();
   const progressQuery = trpc.routineAnalytics.getProgress.useQuery({ period: "week" });
@@ -18,21 +19,9 @@ export default function RoutinesEnhanced() {
   const adhesionQuery = trpc.routineAnalytics.getAdhesion.useQuery({ period: "month" });
   const statsQuery = trpc.routineAnalytics.getUserStats.useQuery();
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <PageLoader />;
 
-  if (!isAuthenticated || !user) {
-    window.location.href = "/";
-    return null;
-  }
+  if (!isAuthenticated || !user) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -1,10 +1,10 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
+import PageLoader from "@/components/PageLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, ArrowLeft, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { useEffect } from "react";
 import { Line, Bar } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -32,28 +32,14 @@ ChartJS.register(
 );
 
 export default function Analytics() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useRequireAuth();
   
   const patternsQuery = trpc.analytics.patterns.useQuery();
   const trendsQuery = trpc.analytics.trends.useQuery({ days: 30 });
   const symptomAnalyticsQuery = trpc.symptoms.getAnalytics.useQuery({ days: 30 });
   const techniqueAnalyticsQuery = trpc.techniques.getAnalytics.useQuery();
 
-  const [, navigate] = useLocation();
-  useEffect(() => {
-    if (!loading && !isAuthenticated) navigate("/");
-  }, [loading, isAuthenticated, navigate]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <PageLoader />;
 
 
   if (!isAuthenticated || !user) return null;

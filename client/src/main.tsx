@@ -44,3 +44,16 @@ createRoot(document.getElementById("root")!).render(
     <Root />
   </StrictMode>
 );
+
+// Registra o service worker para que o app abra offline e possa ser
+// instalado na tela inicial. Só em produção: em dev o SW intercepta os
+// módulos do Vite e quebra o HMR. usePushNotifications também chama
+// register() para obter a registration de push — register() é idempotente
+// para a mesma URL/escopo, então as duas chamadas convivem.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js").catch((error) => {
+      console.warn("[PWA] Falha ao registrar o service worker:", error);
+    });
+  });
+}

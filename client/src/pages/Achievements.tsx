@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
+import PageLoader from "@/components/PageLoader";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Trophy, Star, Zap, Target, Gift, TrendingUp } from "lucide-react";
 
 export default function Achievements() {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading } = useRequireAuth();
   const [selectedBadge, setSelectedBadge] = useState<any>(null);
 
   // Fetch game stats
@@ -60,6 +61,10 @@ export default function Achievements() {
     epic: "bg-purple-100 text-purple-800",
     legendary: "bg-yellow-100 text-yellow-800",
   };
+
+  if (loading) return <PageLoader />;
+
+  if (!isAuthenticated || !user) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 md:p-8">
