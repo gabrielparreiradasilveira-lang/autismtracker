@@ -9,8 +9,15 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import * as gamification from "./gamification";
+import { generateInsights } from "./insights";
 import * as notifications from "./notifications";
 import * as crisis from "./crisis";
+
+/**
+ * Número mínimo de ocorrências para uma média por gatilho ser exibida
+ * como correlação. Abaixo disso a média é ruído de uma amostra pequena.
+ */
+const MIN_OCCURRENCES_FOR_CORRELATION = 3;
 
 export const appRouter = router({
   system: systemRouter,
@@ -367,6 +374,15 @@ export const appRouter = router({
   }),
 
   analytics: router({
+    /**
+     * Insights acionáveis cruzando rotinas, sintomas, gatilhos e técnicas.
+     * Devolve também `missing`: o que falta registrar para desbloquear
+     * cada análise ainda indisponível.
+     */
+    insights: protectedProcedure.query(async ({ ctx }) => {
+      return await generateInsights(ctx.user.id);
+    }),
+
     patterns: protectedProcedure.query(async ({ ctx }) => {
       const moodEntries = await db.getMoodEntriesByUser(ctx.user.id);
       const triggers = await db.getSensoryTriggersByUser(ctx.user.id);
@@ -427,38 +443,83 @@ export const appRouter = router({
           return acc;
         }, {} as Record<string, { count: number; totalMood: number; totalAnxiety: number }>);
 
-      const correlations = Object.entries(triggerImpact).map(([trigger, data]) => ({
+      const all = Object.entries(triggerImpact).map(([trigger, data]) => ({
         trigger,
         avgMood: data.totalMood / data.count,
         avgAnxiety: data.totalAnxiety / data.count,
         occurrences: data.count,
       }));
 
-      return { correlations, insights: [] };
+      // Um gatilho registrado uma ou duas vezes não sustenta uma média:
+      // antes, um único registro ruim podia encabeçar o ranking como
+      // "Impacto Alto". Abaixo do limiar ele sai da lista e vira apenas
+      // uma contagem, para o usuário saber que existe e falta registrar.
+      const correlations = all.filter((c) => c.occurrences >= MIN_OCCURRENCES_FOR_CORRELATION);
+      const insufficientSample = all.filter((c) => c.occurrences < MIN_OCCURRENCES_FOR_CORRELATION);
+
+      return {
+        correlations,
+        insufficientSample: {
+          count: insufficientSample.length,
+          triggers: insufficientSample.map((c) => c.trigger),
+          minOccurrences: MIN_OCCURRENCES_FOR_CORRELATION,
+        },
+      };
     }),
 
+    /**
+     * Compara a média dos últimos 7 registros com a média histórica.
+     * NÃO é previsão: nada aqui projeta o futuro, apenas descreve duas
+     * janelas de tempo. Os nomes dos campos dizem isso explicitamente,
+     * e no lugar de um "% de confiança" (que antes media só volume de
+     * dados) devolvemos tamanho da amostra e dispersão — que é o que
+     * de fato indica se a média recente significa alguma coisa.
+     */
     predictions: protectedProcedure.query(async ({ ctx }) => {
       const moodEntries = await db.getMoodEntriesByUser(ctx.user.id);
-      
+
+      const round = (n: number) => Math.round(n * 10) / 10;
+
       if (moodEntries.length < 7) {
         return {
-          predictedMood: null,
-          predictedAnxiety: null,
-          confidence: 0,
-          message: "Dados insuficientes para previsão. Continue registrando seu humor."
+          hasEnoughData: false as const,
+          recentAverage: null,
+          historicalAverage: null,
+          sampleSize: moodEntries.length,
+          recentSampleSize: 0,
+          variability: null,
+          message:
+            moodEntries.length === 1
+              ? "Você tem 1 registro de humor. A partir de 7 dá para comparar sua média recente com a histórica."
+              : `Você tem ${moodEntries.length} registros de humor. A partir de 7 dá para comparar sua média recente com a histórica.`,
         };
       }
 
-      // Simple moving average for prediction
       const recent = moodEntries.slice(0, 7);
-      const predictedMood = recent.reduce((sum, e) => sum + e.moodLevel, 0) / recent.length;
-      const predictedAnxiety = recent.reduce((sum, e) => sum + e.anxietyLevel, 0) / recent.length;
+      const mean = (values: number[]) => values.reduce((sum, v) => sum + v, 0) / values.length;
+
+      const allMood = moodEntries.map((e) => e.moodLevel);
+      const historicalMood = mean(allMood);
+
+      // Desvio-padrão do humor: quanto maior, menos uma média resume os dados.
+      const variability = Math.sqrt(
+        mean(allMood.map((v) => (v - historicalMood) ** 2))
+      );
 
       return {
-        predictedMood: Math.round(predictedMood * 10) / 10,
-        predictedAnxiety: Math.round(predictedAnxiety * 10) / 10,
-        confidence: Math.min(moodEntries.length / 30, 1) * 100,
-        message: "Previsão baseada nos últimos 7 registros"
+        hasEnoughData: true as const,
+        recentAverage: {
+          mood: round(mean(recent.map((e) => e.moodLevel))),
+          anxiety: round(mean(recent.map((e) => e.anxietyLevel))),
+        },
+        historicalAverage: {
+          mood: round(historicalMood),
+          anxiety: round(mean(moodEntries.map((e) => e.anxietyLevel))),
+        },
+        sampleSize: moodEntries.length,
+        recentSampleSize: recent.length,
+        variability: round(variability),
+        message: "Comparação entre seus últimos 7 registros e todo o seu histórico.",
       };
     }),
 

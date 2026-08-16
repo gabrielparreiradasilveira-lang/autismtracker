@@ -1,10 +1,12 @@
 import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
 import PageLoader from "@/components/PageLoader";
+import InsightSection from "@/components/InsightSection";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GitBranch, ArrowLeft, AlertCircle, CheckCircle, Info } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { plural } from "@/lib/utils";
 
 export default function Correlations() {
   const { user, isAuthenticated, loading } = useRequireAuth();
@@ -55,6 +57,10 @@ export default function Correlations() {
           <p className="text-gray-600">Entenda como gatilhos afetam seu bem-estar</p>
         </div>
 
+        <div className="mb-8">
+          <InsightSection />
+        </div>
+
         {correlationsQuery.isLoading ? (
           <Card>
             <CardContent className="p-6">
@@ -71,9 +77,10 @@ export default function Correlations() {
                   <div>
                     <h3 className="font-semibold text-blue-900 mb-2">Como Interpretar</h3>
                     <p className="text-sm text-blue-800">
-                      Esta análise mostra como diferentes gatilhos impactam seu humor e ansiedade. 
-                      Gatilhos com <strong>maior impacto</strong> estão associados a níveis mais baixos de humor 
-                      e níveis mais altos de ansiedade quando ocorrem.
+                      Para cada gatilho, comparamos a média do seu humor e da sua ansiedade nos dias em
+                      que você o registrou. Um gatilho de <strong>impacto alto</strong> é aquele
+                      associado às suas médias de humor mais baixas — o que não significa que ele seja
+                      a causa. Só entram gatilhos registrados em pelo menos 3 dias.
                     </p>
                   </div>
                 </div>
@@ -145,22 +152,27 @@ export default function Correlations() {
 
                       <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                         <p className="text-sm text-gray-700">
+                          {/* "associado a", nunca "causa": estes números vêm
+                              de médias, não de uma relação causal. */}
                           {impact.level === "Alto" && (
                             <>
-                              <strong>Atenção:</strong> Este gatilho tem um impacto significativo no seu bem-estar. 
-                              Considere desenvolver estratégias de enfrentamento específicas ou buscar apoio profissional.
+                              <strong>Atenção:</strong> nos dias em que você registrou este gatilho, seu
+                              humor médio foi {correlation.avgMood.toFixed(1)} de 10 — o grupo mais baixo
+                              dos seus registros. Ter uma estratégia preparada para ele pode ajudar.
                             </>
                           )}
                           {impact.level === "Moderado" && (
                             <>
-                              <strong>Observação:</strong> Este gatilho afeta moderadamente seu humor. 
-                              Pratique técnicas de autorregulação quando ele ocorrer.
+                              <strong>Observação:</strong> nos dias com este gatilho, seu humor médio foi{" "}
+                              {correlation.avgMood.toFixed(1)} de 10. Praticar uma técnica de
+                              autorregulação quando ele ocorrer pode ajudar.
                             </>
                           )}
                           {impact.level === "Baixo" && (
                             <>
-                              <strong>Positivo:</strong> Este gatilho tem impacto reduzido no seu bem-estar. 
-                              Continue monitorando para identificar padrões.
+                              <strong>Observação:</strong> nos dias com este gatilho, seu humor médio foi{" "}
+                              {correlation.avgMood.toFixed(1)} de 10 — próximo dos seus melhores
+                              registros. Não aparece associado a piora até agora.
                             </>
                           )}
                         </p>
@@ -170,6 +182,20 @@ export default function Correlations() {
                 );
               })}
             </div>
+
+            {/* Gatilhos ainda sem amostra suficiente */}
+            {data && data.insufficientSample.count > 0 && (
+              <Card className="bg-gray-50">
+                <CardContent className="pt-6">
+                  <p className="text-sm text-gray-700">
+                    <strong>{data.insufficientSample.count} gatilho(s)</strong> ainda não aparecem na
+                    lista acima: {data.insufficientSample.triggers.join(", ")}. É preciso registrá-los
+                    em pelo menos {data.insufficientSample.minOccurrences} dias para que a média
+                    signifique algo.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Summary Card */}
             <Card>
@@ -232,8 +258,8 @@ export default function Correlations() {
             <CardContent className="p-6 text-center">
               <GitBranch className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-sm text-gray-600 mb-4">
-                Dados insuficientes para análise de correlações. 
-                Registre seu humor e associe gatilhos para ver insights.
+                Nenhum gatilho foi registrado em pelo menos 3 entradas de humor ainda. Ao registrar
+                seu humor, marque os gatilhos daquele dia para que esta comparação apareça.
               </p>
               <Link href="/mood">
                 <Button>Registrar Humor</Button>
@@ -256,7 +282,7 @@ export default function Correlations() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <div className="text-sm text-gray-600 mb-1">
-                      Dias com sintoma severo (≥7/10) — {symptomCorrelationQuery.data.highSeverityDayCount} dia(s)
+                      Dias com sintoma severo (≥7/10) — {plural(symptomCorrelationQuery.data.highSeverityDayCount, "dia", "dias")}
                     </div>
                     <div className="text-3xl font-bold text-red-600">
                       {symptomCorrelationQuery.data.avgMoodHighSeverity ?? "—"}
@@ -267,7 +293,7 @@ export default function Correlations() {
                   </div>
                   <div>
                     <div className="text-sm text-gray-600 mb-1">
-                      Dias com sintoma leve (&lt;7/10) — {symptomCorrelationQuery.data.lowSeverityDayCount} dia(s)
+                      Dias com sintoma leve (&lt;7/10) — {plural(symptomCorrelationQuery.data.lowSeverityDayCount, "dia", "dias")}
                     </div>
                     <div className="text-3xl font-bold text-green-600">
                       {symptomCorrelationQuery.data.avgMoodLowSeverity ?? "—"}

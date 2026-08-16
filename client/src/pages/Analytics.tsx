@@ -1,10 +1,12 @@
 import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
 import PageLoader from "@/components/PageLoader";
+import InsightSection from "@/components/InsightSection";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, ArrowLeft, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { plural } from "@/lib/utils";
 import { Line, Bar } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -185,6 +187,11 @@ export default function Analytics() {
           <p className="text-gray-600">Visualize tendências e padrões nos seus dados</p>
         </div>
 
+        {/* Insights vêm primeiro: o número sozinho não diz o que fazer. */}
+        <div className="mb-8">
+          <InsightSection />
+        </div>
+
         {patternsQuery.isLoading ? (
           <Card>
             <CardContent className="p-6">
@@ -347,7 +354,8 @@ export default function Analytics() {
             <CardContent className="p-6 text-center">
               <BarChart3 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-sm text-gray-600 mb-4">
-                Dados insuficientes para análise. Continue registrando seu humor e gatilhos.
+                Você ainda não tem registros de humor. Os gráficos desta tela aparecem a partir do
+                primeiro registro.
               </p>
               <Link href="/mood">
                 <Button>Registrar Humor</Button>
@@ -404,7 +412,7 @@ export default function Analytics() {
                         {symptomAnalytics.averageEffectiveness}/10
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
-                        Média de {symptomAnalytics.interventionsLoggedCount} registro(s) com intervenção
+                        Média de {plural(symptomAnalytics.interventionsLoggedCount, "registro", "registros")} com intervenção
                       </p>
                     </>
                   ) : (

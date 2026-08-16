@@ -1,44 +1,44 @@
 import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
 import PageLoader from "@/components/PageLoader";
+import InsightSection from "@/components/InsightSection";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Sparkles, ArrowLeft, TrendingUp, AlertTriangle, Info } from "lucide-react";
+import { Sparkles, ArrowLeft, TrendingUp, TrendingDown, Info } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 
+/**
+ * Esta tela compara duas janelas de tempo (últimos 7 registros vs. todo o
+ * histórico). Ela não projeta o futuro, e a redação abaixo evita
+ * qualquer formulação que sugira isso.
+ */
 export default function Predictions() {
   const { user, isAuthenticated, loading } = useRequireAuth();
-  
-  const predictionsQuery = trpc.analytics.predictions.useQuery();
-  const patternsQuery = trpc.analytics.patterns.useQuery();
+
+  const comparisonQuery = trpc.analytics.predictions.useQuery();
 
   if (loading) return <PageLoader />;
 
-
   if (!isAuthenticated || !user) return null;
 
-  const predictions = predictionsQuery.data;
-  const patterns = patternsQuery.data;
+  const data = comparisonQuery.data;
 
-  const getMoodTrend = (predicted: number | null, current: number) => {
-    if (!predicted) return null;
-    const diff = predicted - current;
-    if (Math.abs(diff) < 0.5) return { direction: "stable", text: "Estável", color: "blue" };
-    if (diff > 0) return { direction: "up", text: "Melhora", color: "green" };
-    return { direction: "down", text: "Declínio", color: "red" };
+  const describeDelta = (recent: number, historical: number, lowerIsBetter = false) => {
+    const diff = recent - historical;
+    if (Math.abs(diff) < 0.5) {
+      return {
+        icon: Info,
+        className: "bg-blue-100 text-blue-700",
+        text: "Sem mudança relevante",
+      };
+    }
+    const improved = lowerIsBetter ? diff < 0 : diff > 0;
+    return {
+      icon: improved ? TrendingUp : TrendingDown,
+      className: improved ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700",
+      text: `${diff > 0 ? "+" : ""}${diff.toFixed(1)} em relação ao seu histórico`,
+    };
   };
-
-  const getConfidenceLevel = (confidence: number) => {
-    if (confidence >= 80) return { level: "Alta", color: "green" };
-    if (confidence >= 50) return { level: "Média", color: "yellow" };
-    return { level: "Baixa", color: "red" };
-  };
-
-  const moodTrend = predictions?.predictedMood && patterns?.averages.mood
-    ? getMoodTrend(predictions.predictedMood, patterns.averages.mood)
-    : null;
-
-  const confidenceInfo = predictions ? getConfidenceLevel(predictions.confidence) : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -63,247 +63,140 @@ export default function Predictions() {
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Previsões e Tendências</h1>
           </div>
-          <p className="text-gray-600">Antecipe padrões e planeje seu bem-estar</p>
+          <p className="text-gray-600">
+            Compare seus registros recentes com todo o seu histórico
+          </p>
         </div>
 
-        {predictionsQuery.isLoading ? (
+        {comparisonQuery.isLoading ? (
           <Card>
             <CardContent className="p-6">
-              <p className="text-sm text-gray-600">Gerando previsões...</p>
+              <p className="text-sm text-gray-600">Calculando...</p>
             </CardContent>
           </Card>
-        ) : predictions && predictions.predictedMood !== null ? (
+        ) : data?.hasEnoughData ? (
           <div className="space-y-6">
-            {/* Confidence Indicator */}
-            <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                      Confiança da Previsão
-                    </h3>
-                    <p className="text-sm text-gray-600">{predictions.message}</p>
-                  </div>
-                  <div className="text-center">
-                    <div className={`text-4xl font-bold ${
-                      confidenceInfo?.color === 'green' ? 'text-green-600' :
-                      confidenceInfo?.color === 'yellow' ? 'text-yellow-600' :
-                      'text-red-600'
-                    }`}>
-                      {Math.round(predictions.confidence)}%
-                    </div>
-                    <div className={`text-sm font-medium ${
-                      confidenceInfo?.color === 'green' ? 'text-green-700' :
-                      confidenceInfo?.color === 'yellow' ? 'text-yellow-700' :
-                      'text-red-700'
-                    }`}>
-                      {confidenceInfo?.level}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Predictions */}
-            <div className="grid md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-purple-600" />
-                    Previsão de Humor
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-6">
-                    <div className="text-6xl font-bold text-purple-600 mb-2">
-                      {predictions.predictedMood.toFixed(1)}
-                    </div>
-                    <div className="text-sm text-gray-600 mb-4">de 10</div>
-                    
-                    {moodTrend && (
-                      <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full ${
-                        moodTrend.color === 'green' ? 'bg-green-100 text-green-700' :
-                        moodTrend.color === 'red' ? 'bg-red-100 text-red-700' :
-                        'bg-blue-100 text-blue-700'
-                      }`}>
-                        {moodTrend.direction === "up" && <TrendingUp className="w-4 h-4" />}
-                        {moodTrend.direction === "down" && <AlertTriangle className="w-4 h-4" />}
-                        {moodTrend.direction === "stable" && <Info className="w-4 h-4" />}
-                        <span className="text-sm font-medium">{moodTrend.text}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-4 p-4 bg-purple-50 rounded-lg">
-                    <p className="text-sm text-gray-700">
-                      {predictions.predictedMood >= 7 ? (
-                        <>
-                          <strong>Previsão Positiva:</strong> Seu humor tende a se manter elevado. 
-                          Continue com suas práticas atuais de bem-estar.
-                        </>
-                      ) : predictions.predictedMood >= 5 ? (
-                        <>
-                          <strong>Previsão Moderada:</strong> Seu humor pode oscilar. 
-                          Considere praticar exercícios de respiração preventivamente.
-                        </>
-                      ) : (
-                        <>
-                          <strong>Atenção Necessária:</strong> Tendência de humor mais baixo. 
-                          Planeje atividades de autocuidado e considere apoio profissional.
-                        </>
-                      )}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-red-600" />
-                    Previsão de Ansiedade
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-6">
-                    <div className="text-6xl font-bold text-red-600 mb-2">
-                      {predictions.predictedAnxiety.toFixed(1)}
-                    </div>
-                    <div className="text-sm text-gray-600 mb-4">de 10</div>
-                    
-                    <div className={`inline-flex items-center gap-2 px-4 py-2 ${
-                      predictions.predictedAnxiety <= 4 ? 'bg-green-100 text-green-700' :
-                      predictions.predictedAnxiety <= 6 ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-red-100 text-red-700'
-                    } rounded-full`}>
-                      {predictions.predictedAnxiety <= 4 ? (
-                        <><Info className="w-4 h-4" /><span className="text-sm font-medium">Controlada</span></>
-                      ) : predictions.predictedAnxiety <= 6 ? (
-                        <><Info className="w-4 h-4" /><span className="text-sm font-medium">Moderada</span></>
-                      ) : (
-                        <><AlertTriangle className="w-4 h-4" /><span className="text-sm font-medium">Elevada</span></>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-4 p-4 bg-red-50 rounded-lg">
-                    <p className="text-sm text-gray-700">
-                      {predictions.predictedAnxiety <= 4 ? (
-                        <>
-                          <strong>Situação Favorável:</strong> Níveis de ansiedade tendem a permanecer controlados. 
-                          Mantenha suas rotinas de relaxamento.
-                        </>
-                      ) : predictions.predictedAnxiety <= 6 ? (
-                        <>
-                          <strong>Monitoramento Recomendado:</strong> Ansiedade pode aumentar. 
-                          Pratique técnicas de respiração e evite gatilhos conhecidos.
-                        </>
-                      ) : (
-                        <>
-                          <strong>Ação Preventiva:</strong> Tendência de ansiedade elevada. 
-                          Priorize exercícios de autorregulação e considere ajustar sua rotina.
-                        </>
-                      )}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Current vs Predicted */}
-            {patterns && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Comparação: Atual vs Previsto</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex justify-between text-sm text-gray-600 mb-2">
-                        <span>Humor</span>
-                        <span>Atual: {patterns.averages.mood.toFixed(1)} → Previsto: {predictions.predictedMood.toFixed(1)}</span>
-                      </div>
-                      <div className="relative h-8 bg-gray-200 rounded-full overflow-hidden">
-                        <div 
-                          className="absolute h-full bg-purple-300 transition-all"
-                          style={{ width: `${(patterns.averages.mood / 10) * 100}%` }}
-                        />
-                        <div 
-                          className="absolute h-full bg-purple-600 transition-all opacity-70"
-                          style={{ width: `${(predictions.predictedMood / 10) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between text-sm text-gray-600 mb-2">
-                        <span>Ansiedade</span>
-                        <span>Atual: {patterns.averages.anxiety.toFixed(1)} → Previsto: {predictions.predictedAnxiety.toFixed(1)}</span>
-                      </div>
-                      <div className="relative h-8 bg-gray-200 rounded-full overflow-hidden">
-                        <div 
-                          className="absolute h-full bg-red-300 transition-all"
-                          style={{ width: `${(patterns.averages.anxiety / 10) * 100}%` }}
-                        />
-                        <div 
-                          className="absolute h-full bg-red-600 transition-all opacity-70"
-                          style={{ width: `${(predictions.predictedAnxiety / 10) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Recommendations */}
-            <Card className="bg-indigo-50 border-indigo-200">
+            {/* Como ler estes números */}
+            <Card className="bg-blue-50 border-blue-200">
               <CardContent className="pt-6">
                 <div className="flex gap-3">
-                  <Sparkles className="w-6 h-6 text-indigo-600 flex-shrink-0" />
+                  <Info className="w-6 h-6 text-blue-600 flex-shrink-0" />
                   <div>
-                    <h3 className="font-semibold text-indigo-900 mb-2">Recomendações Baseadas em Previsões</h3>
-                    <ul className="text-sm text-indigo-800 space-y-2">
-                      {predictions.predictedMood < 5 && (
-                        <li>• <strong>Priorize autocuidado:</strong> Reserve tempo para atividades que você gosta</li>
-                      )}
-                      {predictions.predictedAnxiety > 6 && (
-                        <li>• <strong>Pratique exercícios de respiração:</strong> Dedique 10 minutos diários para técnicas de relaxamento</li>
-                      )}
-                      <li>• <strong>Mantenha registros consistentes:</strong> Quanto mais dados, mais precisas as previsões</li>
-                      <li>• <strong>Revise seus gatilhos:</strong> Identifique e evite situações que impactam negativamente</li>
-                      <li>• <strong>Estabeleça rotinas:</strong> Estrutura ajuda a manter estabilidade emocional</li>
-                    </ul>
-                    <div className="mt-4 flex gap-2">
-                      <Link href="/breathing">
-                        <Button size="sm">Exercícios de Respiração</Button>
-                      </Link>
-                      <Link href="/routines">
-                        <Button size="sm" variant="outline">Gerenciar Rotinas</Button>
-                      </Link>
-                    </div>
+                    <h3 className="font-semibold text-blue-900 mb-2">Como ler estes números</h3>
+                    <p className="text-sm text-blue-800">
+                      Esta tela compara a média dos seus{" "}
+                      <strong>últimos {data.recentSampleSize} registros</strong> com a média de{" "}
+                      <strong>todos os seus {data.sampleSize} registros</strong>. São duas fotos do
+                      passado, não uma projeção do que vai acontecer.
+                    </p>
+                    <p className="text-sm text-blue-800 mt-2">
+                      Seu humor varia tipicamente <strong>±{data.variability?.toFixed(1)} pontos</strong>{" "}
+                      em torno da média.{" "}
+                      {(data.variability ?? 0) >= 2
+                        ? "Como essa variação é grande, uma diferença pequena entre as duas médias pode ser apenas oscilação normal."
+                        : "Como essa variação é pequena, suas médias são estáveis."}
+                    </p>
                   </div>
                 </div>
               </CardContent>
             </Card>
+
+            {/* Humor e Ansiedade */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {([
+                {
+                  label: "Humor",
+                  recent: data.recentAverage!.mood,
+                  historical: data.historicalAverage!.mood,
+                  lowerIsBetter: false,
+                  accent: "text-purple-600",
+                  bar: "bg-purple-600",
+                  barSoft: "bg-purple-200",
+                },
+                {
+                  label: "Ansiedade",
+                  recent: data.recentAverage!.anxiety,
+                  historical: data.historicalAverage!.anxiety,
+                  lowerIsBetter: true,
+                  accent: "text-red-600",
+                  bar: "bg-red-600",
+                  barSoft: "bg-red-200",
+                },
+              ] as const).map((metric) => {
+                const delta = describeDelta(metric.recent, metric.historical, metric.lowerIsBetter);
+                const DeltaIcon = delta.icon;
+                return (
+                  <Card key={metric.label}>
+                    <CardHeader>
+                      <CardTitle>{metric.label}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-center py-4">
+                        <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">
+                          Últimos {data.recentSampleSize} registros
+                        </div>
+                        <div className={`text-6xl font-bold mb-1 ${metric.accent}`}>
+                          {metric.recent.toFixed(1)}
+                        </div>
+                        <div className="text-sm text-gray-600 mb-4">de 10</div>
+
+                        <div
+                          className={`inline-flex items-center gap-2 px-4 py-2 rounded-full ${delta.className}`}
+                        >
+                          <DeltaIcon className="w-4 h-4" />
+                          <span className="text-sm font-medium">{delta.text}</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 mt-4">
+                        <div>
+                          <div className="flex justify-between text-xs text-gray-600 mb-1">
+                            <span>Histórico completo ({data.sampleSize} registros)</span>
+                            <span>{metric.historical.toFixed(1)}</span>
+                          </div>
+                          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${metric.barSoft}`}
+                              style={{ width: `${(metric.historical / 10) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-gray-600 mb-1">
+                            <span>Últimos {data.recentSampleSize} registros</span>
+                            <span>{metric.recent.toFixed(1)}</span>
+                          </div>
+                          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${metric.bar}`}
+                              style={{ width: `${(metric.recent / 10) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           </div>
         ) : (
           <Card>
             <CardContent className="p-6 text-center">
               <Sparkles className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-600 mb-2 font-medium">
-                {predictions?.message || "Dados insuficientes para previsões"}
-              </p>
-              <p className="text-xs text-gray-500 mb-4">
-                Continue registrando seu humor diariamente. São necessários pelo menos 7 registros 
-                para gerar previsões confiáveis.
-              </p>
+              <p className="text-sm text-gray-600 mb-4 font-medium">{data?.message}</p>
               <Link href="/mood">
                 <Button>Registrar Humor</Button>
               </Link>
             </CardContent>
           </Card>
         )}
+
+        {/* Substitui o bloco antigo de "recomendações" que era fixo para
+            todos os usuários. */}
+        <div className="mt-8">
+          <InsightSection title="O que fazer com isso" />
+        </div>
       </main>
     </div>
   );

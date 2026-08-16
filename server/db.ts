@@ -582,36 +582,64 @@ export async function getRoutineMoodCorrelations(userId: number) {
   // Calculate correlations
   const daysWithBothData = Object.values(dailyData).filter(d => d.avgMood > 0);
 
-  if (daysWithBothData.length < 5) {
+  const MIN_DAYS = 5;
+  if (daysWithBothData.length < MIN_DAYS) {
     return {
-      hasSufficientData: false,
+      hasSufficientData: false as const,
       message: "Continue registrando suas rotinas e humor para ver correlações.",
       correlations: [],
+      daysAnalyzed: daysWithBothData.length,
+      daysWithRoutines: 0,
+      daysWithoutRoutines: 0,
+      minDays: MIN_DAYS,
+      avgMoodWithRoutines: null,
+      avgMoodWithoutRoutines: null,
+      avgAnxietyWithRoutines: null,
+      avgAnxietyWithoutRoutines: null,
     };
   }
 
-  const avgMoodWithRoutines = daysWithBothData
-    .filter(d => d.routinesCompleted > 0)
-    .reduce((sum, d) => sum + d.avgMood, 0) / daysWithBothData.filter(d => d.routinesCompleted > 0).length;
+  const withRoutines = daysWithBothData.filter(d => d.routinesCompleted > 0);
+  const withoutRoutines = daysWithBothData.filter(d => d.routinesCompleted === 0);
 
-  const avgMoodWithoutRoutines = daysWithBothData
-    .filter(d => d.routinesCompleted === 0)
-    .reduce((sum, d) => sum + d.avgMood, 0) / (daysWithBothData.filter(d => d.routinesCompleted === 0).length || 1);
+  // Média protegida: comparar grupos exige que ambos existam. Antes, um
+  // usuário que completou rotina em todos os dias registrados produzia
+  // 0/0 = NaN aqui.
+  const average = (days: typeof daysWithBothData, pick: (d: (typeof daysWithBothData)[number]) => number) =>
+    days.length > 0 ? days.reduce((sum, d) => sum + pick(d), 0) / days.length : null;
 
-  const moodImprovement = avgMoodWithRoutines - avgMoodWithoutRoutines;
+  const avgMoodWithRoutines = average(withRoutines, d => d.avgMood);
+  const avgMoodWithoutRoutines = average(withoutRoutines, d => d.avgMood);
+  const avgAnxietyWithRoutines = average(withRoutines, d => d.avgAnxiety);
+  const avgAnxietyWithoutRoutines = average(withoutRoutines, d => d.avgAnxiety);
+
+  const round = (n: number | null) => (n == null ? null : Math.round(n * 10) / 10);
+
+  const moodImprovement =
+    avgMoodWithRoutines != null && avgMoodWithoutRoutines != null
+      ? avgMoodWithRoutines - avgMoodWithoutRoutines
+      : null;
 
   return {
-    hasSufficientData: true,
+    hasSufficientData: true as const,
     message: "Análise dos últimos 30 dias",
-    correlations: [
+    correlations: moodImprovement == null ? [] : [
       {
         metric: "Humor",
-        withRoutines: Math.round(avgMoodWithRoutines * 10) / 10,
-        withoutRoutines: Math.round(avgMoodWithoutRoutines * 10) / 10,
+        withRoutines: round(avgMoodWithRoutines)!,
+        withoutRoutines: round(avgMoodWithoutRoutines)!,
         improvement: Math.round(moodImprovement * 10) / 10,
         impact: moodImprovement > 1 ? "Positivo" : moodImprovement < -1 ? "Negativo" : "Neutro",
       },
     ],
+    daysAnalyzed: daysWithBothData.length,
+    daysWithRoutines: withRoutines.length,
+    daysWithoutRoutines: withoutRoutines.length,
+    minDays: MIN_DAYS,
+    avgMoodWithRoutines: round(avgMoodWithRoutines),
+    avgMoodWithoutRoutines: round(avgMoodWithoutRoutines),
+    avgAnxietyWithRoutines: round(avgAnxietyWithRoutines),
+    avgAnxietyWithoutRoutines: round(avgAnxietyWithoutRoutines),
   };
 }
 
@@ -935,6 +963,13 @@ export async function getSymptomAnalytics(userId: number, days: number = 30) {
   const byType: Record<string, { total: number; count: number }> = {};
   const byDay: Record<string, { total: number; count: number }> = {};
   const triggerCounts: Record<string, number> = {};
+  // Severidade acumulada por gatilho, para responder "quais gatilhos
+  // acompanham os sintomas mais intensos" — e não apenas os mais comuns.
+  const triggerSeverity: Record<string, { total: number; count: number }> = {};
+  // Efetividade por tipo de sintoma: qual tipo mais responde a intervenção.
+  const effectivenessByType: Record<string, { total: number; count: number }> = {};
+  // Severidade por dia da semana (0=domingo), para revelar padrões semanais.
+  const byWeekday: Record<number, { total: number; count: number }> = {};
   let effectivenessTotal = 0;
   let effectivenessCount = 0;
 
@@ -948,13 +983,27 @@ export async function getSymptomAnalytics(userId: number, days: number = 30) {
     byDay[dayKey].total += entry.severity;
     byDay[dayKey].count++;
 
+    const weekday = new Date(entry.date).getDay();
+    if (!byWeekday[weekday]) byWeekday[weekday] = { total: 0, count: 0 };
+    byWeekday[weekday].total += entry.severity;
+    byWeekday[weekday].count++;
+
     if (entry.effectiveness != null) {
       effectivenessTotal += entry.effectiveness;
       effectivenessCount++;
+
+      if (!effectivenessByType[entry.symptomType]) {
+        effectivenessByType[entry.symptomType] = { total: 0, count: 0 };
+      }
+      effectivenessByType[entry.symptomType].total += entry.effectiveness;
+      effectivenessByType[entry.symptomType].count++;
     }
 
     for (const trigger of entry.triggers || []) {
       triggerCounts[trigger] = (triggerCounts[trigger] || 0) + 1;
+      if (!triggerSeverity[trigger]) triggerSeverity[trigger] = { total: 0, count: 0 };
+      triggerSeverity[trigger].total += entry.severity;
+      triggerSeverity[trigger].count++;
     }
   }
 
@@ -972,9 +1021,29 @@ export async function getSymptomAnalytics(userId: number, days: number = 30) {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const topTriggers = Object.entries(triggerCounts)
-    .map(([trigger, count]) => ({ trigger, count }))
+    .map(([trigger, count]) => ({
+      trigger,
+      count,
+      averageSeverity: triggerSeverity[trigger]
+        ? Math.round((triggerSeverity[trigger].total / triggerSeverity[trigger].count) * 10) / 10
+        : 0,
+    }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
+
+  const effectivenessBySymptomType = Object.entries(effectivenessByType).map(
+    ([symptomType, data]) => ({
+      symptomType,
+      averageEffectiveness: Math.round((data.total / data.count) * 10) / 10,
+      count: data.count,
+    })
+  );
+
+  const severityByWeekday = Object.entries(byWeekday).map(([weekday, data]) => ({
+    weekday: Number(weekday),
+    averageSeverity: Math.round((data.total / data.count) * 10) / 10,
+    count: data.count,
+  }));
 
   return {
     totalEntries: entries.length,
@@ -985,6 +1054,8 @@ export async function getSymptomAnalytics(userId: number, days: number = 30) {
       : null,
     interventionsLoggedCount: effectivenessCount,
     topTriggers,
+    effectivenessBySymptomType,
+    severityByWeekday,
   };
 }
 
