@@ -40,6 +40,7 @@ export async function createCrisisEvent(
  * Resolver evento de crise
  */
 export async function resolveCrisisEvent(
+  userId: number,
   crisisId: number,
   duration: number,
   techniquesUsed: string[],
@@ -48,25 +49,20 @@ export async function resolveCrisisEvent(
   const db = await getDb();
   if (!db) return null;
 
-  try {
-    const techniquesJson = JSON.stringify(techniquesUsed);
-    
-    await db.execute(
-      sql`UPDATE crisis_events 
-          SET resolved = true, 
-              resolvedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-              duration = ${duration},
-              techniquesUsed = ${techniquesJson},
-              notes = ${notes || null}
-          WHERE id = ${crisisId}`
-    );
+  const techniquesJson = JSON.stringify(techniquesUsed);
 
-    console.log('[Crisis] Crisis event resolved:', crisisId);
-    return { success: true };
-  } catch (error) {
-    console.error('[Crisis] Error resolving crisis event:', error);
-    return null;
-  }
+  // O filtro por userId é o que impede resolver a crise de outra pessoa.
+  const result = await db.execute(
+    sql`UPDATE crisis_events
+        SET resolved = true,
+            resolvedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+            duration = ${duration},
+            techniquesUsed = ${techniquesJson},
+            notes = ${notes || null}
+        WHERE id = ${crisisId} AND userId = ${userId}`
+  );
+
+  return { success: result.affectedRows > 0, affectedRows: result.affectedRows };
 }
 
 /**
@@ -175,6 +171,7 @@ export async function getUserEmergencyContacts(userId: number) {
  * Atualizar contato de emergência
  */
 export async function updateEmergencyContact(
+  userId: number,
   contactId: number,
   name: string,
   relationship: string,
@@ -186,45 +183,33 @@ export async function updateEmergencyContact(
   const db = await getDb();
   if (!db) return null;
 
-  try {
-    await db.execute(
-      sql`UPDATE emergency_contacts 
-          SET name = ${name},
-              relationship = ${relationship},
-              phone = ${phone || null},
-              email = ${email || null},
-              isPrimary = ${isPrimary},
-              notes = ${notes || null},
-              updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-          WHERE id = ${contactId}`
-    );
+  const result = await db.execute(
+    sql`UPDATE emergency_contacts
+        SET name = ${name},
+            relationship = ${relationship},
+            phone = ${phone || null},
+            email = ${email || null},
+            isPrimary = ${isPrimary},
+            notes = ${notes || null},
+            updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        WHERE id = ${contactId} AND userId = ${userId}`
+  );
 
-    console.log('[Crisis] Emergency contact updated:', contactId);
-    return { success: true };
-  } catch (error) {
-    console.error('[Crisis] Error updating emergency contact:', error);
-    return null;
-  }
+  return { success: result.affectedRows > 0, affectedRows: result.affectedRows };
 }
 
 /**
  * Deletar contato de emergência
  */
-export async function deleteEmergencyContact(contactId: number) {
+export async function deleteEmergencyContact(userId: number, contactId: number) {
   const db = await getDb();
   if (!db) return null;
 
-  try {
-    await db.execute(
-      sql`DELETE FROM emergency_contacts WHERE id = ${contactId}`
-    );
+  const result = await db.execute(
+    sql`DELETE FROM emergency_contacts WHERE id = ${contactId} AND userId = ${userId}`
+  );
 
-    console.log('[Crisis] Emergency contact deleted:', contactId);
-    return { success: true };
-  } catch (error) {
-    console.error('[Crisis] Error deleting emergency contact:', error);
-    return null;
-  }
+  return { success: result.affectedRows > 0, affectedRows: result.affectedRows };
 }
 
 /**
@@ -280,6 +265,7 @@ export async function getUserPresetMessages(userId: number) {
  * Atualizar mensagem pré-escrita
  */
 export async function updatePresetMessage(
+  userId: number,
   messageId: number,
   title: string,
   message: string,
@@ -288,42 +274,30 @@ export async function updatePresetMessage(
   const db = await getDb();
   if (!db) return null;
 
-  try {
-    await db.execute(
-      sql`UPDATE preset_messages 
-          SET title = ${title},
-              message = ${message},
-              category = ${category},
-              updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-          WHERE id = ${messageId}`
-    );
+  const result = await db.execute(
+    sql`UPDATE preset_messages
+        SET title = ${title},
+            message = ${message},
+            category = ${category},
+            updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        WHERE id = ${messageId} AND userId = ${userId}`
+  );
 
-    console.log('[Crisis] Preset message updated:', messageId);
-    return { success: true };
-  } catch (error) {
-    console.error('[Crisis] Error updating preset message:', error);
-    return null;
-  }
+  return { success: result.affectedRows > 0, affectedRows: result.affectedRows };
 }
 
 /**
  * Deletar mensagem pré-escrita
  */
-export async function deletePresetMessage(messageId: number) {
+export async function deletePresetMessage(userId: number, messageId: number) {
   const db = await getDb();
   if (!db) return null;
 
-  try {
-    await db.execute(
-      sql`DELETE FROM preset_messages WHERE id = ${messageId}`
-    );
+  const result = await db.execute(
+    sql`DELETE FROM preset_messages WHERE id = ${messageId} AND userId = ${userId}`
+  );
 
-    console.log('[Crisis] Preset message deleted:', messageId);
-    return { success: true };
-  } catch (error) {
-    console.error('[Crisis] Error deleting preset message:', error);
-    return null;
-  }
+  return { success: result.affectedRows > 0, affectedRows: result.affectedRows };
 }
 
 /**

@@ -31,6 +31,7 @@ describe("Crisis Mode System", () => {
       }
 
       const result = await crisis.resolveCrisisEvent(
+        testUserId,
         crisisId,
         15,
         ["box-breathing", "5-4-3-2-1"],
@@ -95,6 +96,7 @@ describe("Crisis Mode System", () => {
       }
 
       const result = await crisis.updateEmergencyContact(
+        testUserId,
         contactId,
         "Maria Silva",
         "Mãe",
@@ -121,7 +123,7 @@ describe("Crisis Mode System", () => {
         }
       }
 
-      const result = await crisis.deleteEmergencyContact(contactId);
+      const result = await crisis.deleteEmergencyContact(testUserId, contactId);
       expect(result).toBeDefined();
     });
   });
@@ -169,6 +171,7 @@ describe("Crisis Mode System", () => {
       }
 
       const result = await crisis.updatePresetMessage(
+        testUserId,
         messageId,
         "Preciso de Ajuda - Atualizado",
         "Mensagem atualizada",
@@ -211,7 +214,7 @@ describe("Crisis Mode System", () => {
         }
       }
 
-      const result = await crisis.deletePresetMessage(messageId);
+      const result = await crisis.deletePresetMessage(testUserId, messageId);
       expect(result).toBeDefined();
     });
   });

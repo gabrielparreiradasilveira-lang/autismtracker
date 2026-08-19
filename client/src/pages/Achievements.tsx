@@ -38,15 +38,18 @@ export default function Achievements() {
     enabled: !!user,
   });
 
-  // Fetch leaderboard
-  const leaderboardQuery = trpc.gamification.getLeaderboard.useQuery({ limit: 10 });
+  // Apenas a própria posição: o ranking antigo listava nome de todos os
+  // usuários, e constar nessa lista já revela que a pessoa usa o app.
+  const rankingQuery = trpc.gamification.getMyRanking.useQuery(undefined, {
+    enabled: !!user,
+  });
 
   const stats = statsQuery.data as any;
   const badges = badgesQuery.data || [];
   const challenges = challengesQuery.data || [];
   const rewards = rewardsQuery.data || [];
   const userRewards = userRewardsQuery.data || [];
-  const leaderboard = leaderboardQuery.data || [];
+  const ranking = rankingQuery.data;
 
   // Calculate progress to next level
   const progressToNextLevel = stats
@@ -158,7 +161,7 @@ export default function Achievements() {
             <TabsTrigger value="badges">Badges</TabsTrigger>
             <TabsTrigger value="challenges">Desafios</TabsTrigger>
             <TabsTrigger value="rewards">Recompensas</TabsTrigger>
-            <TabsTrigger value="leaderboard">Ranking</TabsTrigger>
+            <TabsTrigger value="leaderboard">Sua posição</TabsTrigger>
           </TabsList>
 
           {/* Badges Tab */}
@@ -377,46 +380,39 @@ export default function Achievements() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="w-5 h-5" />
-                  Ranking Global
+                  Sua posição
                 </CardTitle>
-                <CardDescription>Os usuários mais ativos da comunidade</CardDescription>
+                <CardDescription>
+                  Onde você está em relação a quem também usa o app
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                {leaderboard.length === 0 ? (
-                  <div className="text-center py-12">
-                    <TrendingUp className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-500">Carregando ranking...</p>
+                {rankingQuery.isLoading ? (
+                  <p className="text-sm text-gray-600">Calculando...</p>
+                ) : ranking?.position ? (
+                  <div className="text-center py-8">
+                    <div className="text-6xl font-bold text-indigo-600 mb-2">
+                      {ranking.position}º
+                    </div>
+                    <p className="text-gray-600">
+                      entre {ranking.totalUsers}{" "}
+                      {ranking.totalUsers === 1 ? "pessoa" : "pessoas"}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-4">
+                      Com {ranking.totalPoints}{" "}
+                      {ranking.totalPoints === 1 ? "ponto" : "pontos"} acumulados.
+                    </p>
+                    <p className="text-xs text-gray-400 mt-6 max-w-md mx-auto">
+                      Mostramos apenas a sua posição. Nomes de outras pessoas não são
+                      exibidos aqui.
+                    </p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {leaderboard.map((entry: any, index: number) => (
-                      <div
-                        key={entry.id}
-                        className={`flex items-center justify-between p-4 rounded-lg ${
-                          index === 0
-                            ? "bg-yellow-50 border-2 border-yellow-300"
-                            : index === 1
-                            ? "bg-gray-50 border-2 border-gray-300"
-                            : index === 2
-                            ? "bg-orange-50 border-2 border-orange-300"
-                            : "bg-gray-50"
-                        }`}
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="text-2xl font-bold text-gray-400 w-8">
-                            {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900">{entry.name}</p>
-                            <p className="text-sm text-gray-600">Nível {entry.level}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-indigo-600">{entry.totalPoints} pts</p>
-                          <p className="text-sm text-gray-600">{entry.totalBadgesUnlocked} badges</p>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="text-center py-12">
+                    <TrendingUp className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">
+                      Registre humor, rotinas ou técnicas para começar a somar pontos.
+                    </p>
                   </div>
                 )}
               </CardContent>

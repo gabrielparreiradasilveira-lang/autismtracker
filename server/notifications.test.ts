@@ -113,7 +113,7 @@ describe("Notifications System", () => {
       const notifs = await notifications.getUserNotifications(testUserId, 1);
       if (Array.isArray(notifs) && notifs.length > 0) {
         const notifId = (notifs[0] as any).id;
-        const result = await notifications.markNotificationAsRead(notifId);
+        const result = await notifications.markNotificationAsRead(testUserId, notifId);
         expect(result?.success).toBe(true);
       }
     });
@@ -122,7 +122,7 @@ describe("Notifications System", () => {
       const notifs = await notifications.getUserNotifications(testUserId, 1);
       if (Array.isArray(notifs) && notifs.length > 0) {
         const notifId = (notifs[0] as any).id;
-        const result = await notifications.deleteNotification(notifId);
+        const result = await notifications.deleteNotification(testUserId, notifId);
         expect(result?.success).toBe(true);
       }
     });

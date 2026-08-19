@@ -191,23 +191,19 @@ export async function getUserNotifications(userId: number, limit = 20) {
 /**
  * Marcar notificação como lida
  */
-export async function markNotificationAsRead(notificationId: number) {
+export async function markNotificationAsRead(userId: number, notificationId: number) {
   const db = await getDb();
   if (!db) return null;
 
-  try {
-    await db.execute(
-      sql`UPDATE notifications 
-          SET read = true 
-          WHERE id = ${notificationId}`
-    );
+  // Sem o filtro por userId, qualquer conta podia marcar/apagar a
+  // notificação de outra pessoa informando o id.
+  const result = await db.execute(
+    sql`UPDATE notifications
+        SET read = true
+        WHERE id = ${notificationId} AND userId = ${userId}`
+  );
 
-    console.log('[Notifications] Notification marked as read:', notificationId);
-    return { success: true };
-  } catch (error) {
-    console.error('[Notifications] Error marking notification as read:', error);
-    return null;
-  }
+  return { success: result.affectedRows > 0, affectedRows: result.affectedRows };
 }
 
 /**
@@ -259,21 +255,15 @@ export async function markNotificationAsSent(notificationId: number) {
 /**
  * Deletar notificação
  */
-export async function deleteNotification(notificationId: number) {
+export async function deleteNotification(userId: number, notificationId: number) {
   const db = await getDb();
   if (!db) return null;
 
-  try {
-    await db.execute(
-      sql`DELETE FROM notifications WHERE id = ${notificationId}`
-    );
+  const result = await db.execute(
+    sql`DELETE FROM notifications WHERE id = ${notificationId} AND userId = ${userId}`
+  );
 
-    console.log('[Notifications] Notification deleted:', notificationId);
-    return { success: true };
-  } catch (error) {
-    console.error('[Notifications] Error deleting notification:', error);
-    return null;
-  }
+  return { success: result.affectedRows > 0, affectedRows: result.affectedRows };
 }
 
 /**

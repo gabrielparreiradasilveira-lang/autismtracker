@@ -568,23 +568,39 @@ export async function syncCountChallenges(userId: number, category: string) {
 }
 
 /**
- * Get leaderboard (top users by points)
+ * Posição do próprio usuário, sem expor ninguém.
+ *
+ * O ranking anterior listava id, nome e pontos de todos os usuários e era
+ * acessível sem autenticação. Num app de saúde mental, constar nessa lista
+ * já revela que a pessoa usa o app, e o schema não tem nenhum
+ * consentimento para isso. Devolvemos apenas números agregados.
  */
-export async function getLeaderboard(limit: number = 10) {
+export async function getUserRanking(userId: number) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db) return { position: null, totalUsers: 0, totalPoints: 0 };
 
   try {
-    const result = await db.execute(
-      sql`SELECT u.id, u.name, gs.totalPoints, gs.level, gs.totalBadgesUnlocked
-          FROM user_game_stats gs
-          JOIN users u ON gs.userId = u.id
-          ORDER BY gs.totalPoints DESC
-          LIMIT ${limit}`
+    const stats = (await getUserGameStats(userId)) as { totalPoints?: number } | null;
+    const totalPoints = stats?.totalPoints ?? 0;
+
+    const totalRows = await db.execute(
+      sql`SELECT COUNT(*) as total FROM user_game_stats`
     );
-    return result || [];
+    const aheadRows = await db.execute(
+      sql`SELECT COUNT(*) as ahead FROM user_game_stats WHERE totalPoints > ${totalPoints}`
+    );
+
+    const totalUsers = Number((totalRows?.[0] as any)?.total ?? 0);
+    const ahead = Number((aheadRows?.[0] as any)?.ahead ?? 0);
+
+    return {
+      // Sem estatísticas ainda, o usuário não tem posição definida.
+      position: stats ? ahead + 1 : null,
+      totalUsers,
+      totalPoints,
+    };
   } catch (error) {
-    console.error("[Gamification] Error getting leaderboard:", error);
-    return [];
+    console.error("[Gamification] Error getting user ranking:", error);
+    return { position: null, totalUsers: 0, totalPoints: 0 };
   }
 }

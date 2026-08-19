@@ -19,6 +19,21 @@ import * as crisis from "./crisis";
  */
 const MIN_OCCURRENCES_FOR_CORRELATION = 3;
 
+/**
+ * Converte "nenhuma linha afetada" em FORBIDDEN.
+ *
+ * As mutations por id filtram por userId no WHERE, então zero linhas
+ * significa que o registro não existe OU é de outra pessoa. A mensagem é
+ * a mesma nos dois casos de propósito: distinguir revelaria a existência
+ * de registros alheios.
+ */
+function assertOwned(result: { affectedRows: number } | null) {
+  if (!result || result.affectedRows === 0) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Registro não encontrado" });
+  }
+  return { success: true } as const;
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -711,13 +726,9 @@ export const appRouter = router({
         return await gamification.unlockReward(ctx.user.id, input.rewardId);
       }),
 
-    getLeaderboard: publicProcedure
-      .input(z.object({
-        limit: z.number().optional(),
-      }).optional())
-      .query(async ({ input }) => {
-        return await gamification.getLeaderboard(input?.limit || 10);
-      }),
+    getMyRanking: protectedProcedure.query(async ({ ctx }) => {
+      return await gamification.getUserRanking(ctx.user.id);
+    }),
   }),
 
   notifications: router({
@@ -759,8 +770,10 @@ export const appRouter = router({
       .input(z.object({
         notificationId: z.number(),
       }))
-      .mutation(async ({ input }) => {
-        return await notifications.markNotificationAsRead(input.notificationId);
+      .mutation(async ({ ctx, input }) => {
+        return assertOwned(
+          await notifications.markNotificationAsRead(ctx.user.id, input.notificationId)
+        );
       }),
 
     getUnreadCount: protectedProcedure
@@ -773,8 +786,10 @@ export const appRouter = router({
       .input(z.object({
         notificationId: z.number(),
       }))
-      .mutation(async ({ input }) => {
-        return await notifications.deleteNotification(input.notificationId);
+      .mutation(async ({ ctx, input }) => {
+        return assertOwned(
+          await notifications.deleteNotification(ctx.user.id, input.notificationId)
+        );
       }),
   }),
 
@@ -797,16 +812,21 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const result = await crisis.resolveCrisisEvent(
+          ctx.user.id,
           input.crisisId,
           input.duration,
           input.techniquesUsed,
           input.notes
         );
 
+        // Só premia depois de confirmar que a crise é do próprio usuário:
+        // antes, resolver a crise de outra pessoa rendia 15 pontos ao atacante.
+        const ok = assertOwned(result);
+
         await gamification.recordActivity(ctx.user.id, 15);
         await gamification.unlockBadgeByName(ctx.user.id, "Superação");
 
-        return result;
+        return ok;
       }),
 
     getCrisisEvents: protectedProcedure
@@ -858,15 +878,18 @@ export const appRouter = router({
         isPrimary: z.boolean().optional(),
         notes: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
-        return await crisis.updateEmergencyContact(
-          input.contactId,
-          input.name,
-          input.relationship,
-          input.phone,
-          input.email,
-          input.isPrimary,
-          input.notes
+      .mutation(async ({ ctx, input }) => {
+        return assertOwned(
+          await crisis.updateEmergencyContact(
+            ctx.user.id,
+            input.contactId,
+            input.name,
+            input.relationship,
+            input.phone,
+            input.email,
+            input.isPrimary,
+            input.notes
+          )
         );
       }),
 
@@ -874,8 +897,8 @@ export const appRouter = router({
       .input(z.object({
         contactId: z.number(),
       }))
-      .mutation(async ({ input }) => {
-        return await crisis.deleteEmergencyContact(input.contactId);
+      .mutation(async ({ ctx, input }) => {
+        return assertOwned(await crisis.deleteEmergencyContact(ctx.user.id, input.contactId));
       }),
 
     getPresetMessages: protectedProcedure
@@ -907,12 +930,15 @@ export const appRouter = router({
         message: z.string(),
         category: z.enum(['help', 'location', 'status', 'custom']).optional(),
       }))
-      .mutation(async ({ input }) => {
-        return await crisis.updatePresetMessage(
-          input.messageId,
-          input.title,
-          input.message,
-          input.category
+      .mutation(async ({ ctx, input }) => {
+        return assertOwned(
+          await crisis.updatePresetMessage(
+            ctx.user.id,
+            input.messageId,
+            input.title,
+            input.message,
+            input.category
+          )
         );
       }),
 
@@ -920,8 +946,8 @@ export const appRouter = router({
       .input(z.object({
         messageId: z.number(),
       }))
-      .mutation(async ({ input }) => {
-        return await crisis.deletePresetMessage(input.messageId);
+      .mutation(async ({ ctx, input }) => {
+        return assertOwned(await crisis.deletePresetMessage(ctx.user.id, input.messageId));
       }),
 
     getAllCrisisTechniques: publicProcedure

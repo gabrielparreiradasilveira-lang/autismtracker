@@ -107,10 +107,14 @@ describe("Gamification System", () => {
     });
   });
 
-  describe("Leaderboard", () => {
-    it("should get leaderboard", async () => {
-      const leaderboard = await gamification.getLeaderboard(10);
-      expect(Array.isArray(leaderboard)).toBe(true);
+  describe("Ranking", () => {
+    it("should return the user's own position without exposing anyone else", async () => {
+      const ranking = await gamification.getUserRanking(testUserId);
+
+      expect(ranking.position).toBeGreaterThanOrEqual(1);
+      expect(ranking.totalUsers).toBeGreaterThanOrEqual(1);
+      // Nenhum campo pode carregar dado de outro usuário.
+      expect(Object.keys(ranking).sort()).toEqual(["position", "totalPoints", "totalUsers"]);
     });
   });
 });
