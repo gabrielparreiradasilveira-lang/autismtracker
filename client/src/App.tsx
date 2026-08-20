@@ -25,6 +25,7 @@ import PresetMessages from "./pages/PresetMessages";
 import TechniqueLibrary from "./pages/TechniqueLibrary";
 import Symptoms from "./pages/Symptoms";
 import SOSButton from "./components/SOSButton";
+import ConnectionGate from "./components/ConnectionGate";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 
@@ -66,6 +67,7 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <Router />
+          <ConnectionGate />
           <SOSButton />
         </TooltipProvider>
       </ThemeProvider>

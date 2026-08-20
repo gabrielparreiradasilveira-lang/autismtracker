@@ -16,17 +16,26 @@ import { useAuth } from "./useAuth";
  *   const { user, isAuthenticated, loading } = useRequireAuth();
  *   if (loading) return <PageLoader />;
  *   if (!isAuthenticated || !user) return null;
+ *
+ * O `return null` cobre dois casos: a sessão acabou (e o efeito abaixo já
+ * está levando para a home) ou estamos sem rede. No segundo, quem informa
+ * o usuário é o ConnectionGate montado em App.tsx — por isso as páginas
+ * podem seguir simplesmente devolvendo null.
  */
 export function useRequireAuth() {
   const auth = useAuth();
   const [, navigate] = useLocation();
-  const { loading, isAuthenticated } = auth;
+  const { isSignedOut } = auth;
 
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
+    // Só redireciona quando o servidor confirmou que não há sessão.
+    // Falha de rede não é motivo para expulsar ninguém: o cookie pode
+    // estar perfeitamente válido, e antes bastava um blip de conexão no
+    // celular para a pessoa cair na página de login.
+    if (isSignedOut) {
       navigate("/");
     }
-  }, [loading, isAuthenticated, navigate]);
+  }, [isSignedOut, navigate]);
 
   return auth;
 }
