@@ -388,16 +388,28 @@ export default function Analytics() {
                   <CardTitle>Severidade Média por Tipo</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {symptomAnalytics.averageSeverityByType.map((item) => (
-                    <div key={item.symptomType} className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">
-                        {symptomTypeLabels[item.symptomType] || item.symptomType}
-                      </span>
-                      <span className="font-semibold">
-                        {item.averageSeverity}/10 ({item.count}x)
-                      </span>
-                    </div>
-                  ))}
+                  {symptomAnalytics.averageSeverityByType.map((item) => {
+                    const duracao = symptomAnalytics.durationBySymptomType.find(
+                      (d) => d.symptomType === item.symptomType
+                    );
+                    return (
+                      <div key={item.symptomType} className="flex justify-between items-start gap-3">
+                        <span className="text-sm text-gray-600">
+                          {symptomTypeLabels[item.symptomType] || item.symptomType}
+                        </span>
+                        <span className="text-right">
+                          <span className="font-semibold block">
+                            {item.averageSeverity}/10 ({item.count}x)
+                          </span>
+                          {duracao && (
+                            <span className="text-xs text-gray-500">
+                              dura em média {plural(duracao.averageDuration, "minuto", "minutos")}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
 

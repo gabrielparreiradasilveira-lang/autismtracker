@@ -44,7 +44,7 @@ describe("analytics.insights — dados insuficientes", () => {
     const { insights, missing } = await caller.analytics.insights();
 
     expect(insights).toEqual([]);
-    expect(missing.length).toBe(5);
+    expect(missing.length).toBe(6);
     // Nada de conselho genérico: cada item diz o que falta.
     for (const item of missing) {
       expect(item.missing.length).toBeGreaterThan(20);
@@ -135,6 +135,31 @@ describe("insight: técnica mais bem avaliada", () => {
     expect(insight!.pattern).toContain(techniques[0].title);
     expect(insight!.pattern).toContain("9/10");
     expect(insight!.action.route).toBe("/techniques");
+  });
+});
+
+describe("insight: duração dos episódios", () => {
+  it("com 3+ registros do mesmo tipo, reporta a duração média", async () => {
+    const caller = appRouter.createCaller(createAuthContext(612));
+
+    for (const duration of [30, 40, 50]) {
+      await caller.symptoms.create({ symptomType: "sensory_sensitivity", severity: 6, duration });
+    }
+
+    const insight = await insightById(caller, "symptom-duration");
+
+    expect(insight).toBeDefined();
+    expect(insight!.pattern).toContain("Sensibilidade Sensorial");
+    expect(insight!.pattern).toContain("40 minutos"); // média de 30, 40 e 50
+    expect(insight!.action.route).toBe("/symptoms");
+  });
+
+  it("sem duração anotada, diz quantos registros faltam", async () => {
+    const caller = appRouter.createCaller(createAuthContext(613));
+    await caller.symptoms.create({ symptomType: "focus", severity: 5 });
+
+    expect(await insightById(caller, "symptom-duration")).toBeUndefined();
+    expect((await missingById(caller, "symptom-duration"))?.missing).toMatch(/dura/i);
   });
 });
 

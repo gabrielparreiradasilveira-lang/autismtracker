@@ -993,8 +993,14 @@ export async function getSymptomAnalytics(userId: number, days: number = 30) {
   const effectivenessByType: Record<string, { total: number; count: number }> = {};
   // Severidade por dia da semana (0=domingo), para revelar padrões semanais.
   const byWeekday: Record<number, { total: number; count: number }> = {};
+  // Duração por tipo de sintoma. Agrupa apenas por tipo, nunca por data:
+  // o agrupamento por dia deste arquivo ainda usa dia em UTC, e uma
+  // métrica nova encaixada ali nasceria com o mesmo erro de fuso.
+  const durationByType: Record<string, { total: number; count: number }> = {};
   let effectivenessTotal = 0;
   let effectivenessCount = 0;
+  let durationTotal = 0;
+  let durationCount = 0;
 
   for (const entry of entries) {
     if (!byType[entry.symptomType]) byType[entry.symptomType] = { total: 0, count: 0 };
@@ -1020,6 +1026,17 @@ export async function getSymptomAnalytics(userId: number, days: number = 30) {
       }
       effectivenessByType[entry.symptomType].total += entry.effectiveness;
       effectivenessByType[entry.symptomType].count++;
+    }
+
+    if (entry.duration != null) {
+      durationTotal += entry.duration;
+      durationCount++;
+
+      if (!durationByType[entry.symptomType]) {
+        durationByType[entry.symptomType] = { total: 0, count: 0 };
+      }
+      durationByType[entry.symptomType].total += entry.duration;
+      durationByType[entry.symptomType].count++;
     }
 
     for (const trigger of entry.triggers || []) {
@@ -1068,6 +1085,12 @@ export async function getSymptomAnalytics(userId: number, days: number = 30) {
     count: data.count,
   }));
 
+  const durationBySymptomType = Object.entries(durationByType).map(([symptomType, data]) => ({
+    symptomType,
+    averageDuration: Math.round(data.total / data.count),
+    count: data.count,
+  }));
+
   return {
     totalEntries: entries.length,
     averageSeverityByType,
@@ -1079,6 +1102,9 @@ export async function getSymptomAnalytics(userId: number, days: number = 30) {
     topTriggers,
     effectivenessBySymptomType,
     severityByWeekday,
+    durationBySymptomType,
+    averageDuration: durationCount > 0 ? Math.round(durationTotal / durationCount) : null,
+    durationLoggedCount: durationCount,
   };
 }
 

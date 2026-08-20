@@ -208,6 +208,37 @@ async function triggerVsSymptom(userId: number): Promise<GeneratorResult> {
   };
 }
 
+/**
+ * 6. Duração típica dos episódios, por tipo de sintoma.
+ *
+ * Agrupa só por tipo. Não usa fronteira de dia de propósito: o
+ * agrupamento diário de getSymptomAnalytics ainda calcula o dia em UTC,
+ * e uma métrica nova apoiada nele já nasceria errada para quem registra
+ * à noite.
+ */
+async function symptomDuration(userId: number): Promise<GeneratorResult> {
+  const id = "symptom-duration";
+  const analytics = await getSymptomAnalytics(userId, 90);
+
+  const eligible = analytics.durationBySymptomType.filter((d) => d.count >= MIN_OCCURRENCES);
+  if (eligible.length === 0) {
+    return {
+      id,
+      missing: `Você anotou a duração em ${plural(analytics.durationLoggedCount, "registro", "registros")}. São necessários ${MIN_OCCURRENCES} no mesmo tipo de sintoma para calcular a duração típica.`,
+    };
+  }
+
+  const maisLongo = [...eligible].sort((a, b) => b.averageDuration - a.averageDuration)[0];
+
+  return {
+    id,
+    sampleSize: maisLongo.count,
+    pattern: `Seus episódios de ${symptomLabel(maisLongo.symptomType)} duram em média ${plural(maisLongo.averageDuration, "minuto", "minutos")} (${plural(maisLongo.count, "registro", "registros")}).`,
+    meaning: `É o tipo de sintoma que ocupa mais tempo entre os que você registrou. Saber a duração típica ajuda a planejar pausas e a avaliar se uma intervenção encurtou o episódio.`,
+    action: { label: "Ver meus registros", route: "/symptoms" },
+  };
+}
+
 /** 5. Técnica com melhor efetividade autorrelatada. */
 async function mostEffectiveTechnique(userId: number): Promise<GeneratorResult> {
   const id = "technique-effectiveness";
@@ -245,6 +276,7 @@ export async function generateInsights(userId: number) {
     interventionBySymptomType(userId),
     triggerVsSymptom(userId),
     mostEffectiveTechnique(userId),
+    symptomDuration(userId),
   ]);
 
   return {
