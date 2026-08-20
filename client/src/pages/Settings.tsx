@@ -8,16 +8,26 @@ import { Switch } from "@/components/ui/switch";
 import { Settings as SettingsIcon, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { useTheme, FONT_SIZES, type FontSize } from "@/contexts/ThemeContext";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 export default function Settings() {
   const { user, isAuthenticated, loading } = useRequireAuth();
-  
-  const [theme, setTheme] = useState("light");
-  const [fontSize, setFontSize] = useState("medium");
+
+  // Aparência e acessibilidade vivem no ThemeProvider, que aplica as
+  // classes no <html>. Assim o efeito é imediato ao mexer no controle,
+  // sem depender de clicar em "Salvar".
+  const {
+    theme,
+    setTheme,
+    fontSize,
+    setFontSize,
+    reduceMotion,
+    setReduceMotion,
+  } = useTheme();
+
   const [highContrast, setHighContrast] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
@@ -35,14 +45,20 @@ export default function Settings() {
 
   useEffect(() => {
     if (settingsQuery.data) {
-      setTheme(settingsQuery.data.theme || "light");
-      setFontSize(settingsQuery.data.fontSize || "medium");
-      setHighContrast(settingsQuery.data.highContrast || false);
+      // O que está salvo no servidor manda: assim a preferência acompanha
+      // a pessoa em outro dispositivo, e não só naquele navegador.
+      if (settingsQuery.data.theme === "dark" || settingsQuery.data.theme === "light") {
+        setTheme(settingsQuery.data.theme);
+      }
+      if (FONT_SIZES.includes(settingsQuery.data.fontSize as FontSize)) {
+        setFontSize(settingsQuery.data.fontSize as FontSize);
+      }
       setReduceMotion(settingsQuery.data.reduceMotion || false);
+      setHighContrast(settingsQuery.data.highContrast || false);
       setSoundEnabled(settingsQuery.data.soundEnabled ?? true);
       setNotificationsEnabled(settingsQuery.data.notificationsEnabled ?? true);
     }
-  }, [settingsQuery.data]);
+  }, [settingsQuery.data, setTheme, setFontSize, setReduceMotion]);
 
   const handleSave = () => {
     updateSettingsMutation.mutate({
@@ -94,29 +110,34 @@ export default function Settings() {
             <CardContent className="space-y-4">
               <div>
                 <Label htmlFor="theme">Tema</Label>
-                <Select value={theme} onValueChange={setTheme}>
+                <Select value={theme} onValueChange={(v) => setTheme(v as "light" | "dark")}>
                   <SelectTrigger id="theme">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* "Automático" foi retirado: nunca chegou a ser
+                        implementado e, agora que o seletor de fato aplica
+                        o tema, escolhê-lo gravaria uma classe inválida em
+                        <html> e deixaria a interface sem tema. */}
                     <SelectItem value="light">Claro</SelectItem>
                     <SelectItem value="dark">Escuro</SelectItem>
-                    <SelectItem value="auto">Automático</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
                 <Label htmlFor="fontSize">Tamanho da Fonte</Label>
-                <Select value={fontSize} onValueChange={setFontSize}>
+                <Select value={fontSize} onValueChange={(v) => setFontSize(v as FontSize)}>
                   <SelectTrigger id="fontSize">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* Os valores precisam bater com FONT_SIZES: é o que
+                        vira a classe font-* no <html>. */}
                     <SelectItem value="small">Pequena</SelectItem>
                     <SelectItem value="medium">Média</SelectItem>
                     <SelectItem value="large">Grande</SelectItem>
-                    <SelectItem value="xlarge">Extra Grande</SelectItem>
+                    <SelectItem value="extra-large">Extra Grande</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

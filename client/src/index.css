@@ -58,3 +58,32 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/*
+ * Preferências de acessibilidade aplicadas na raiz do documento.
+ * Ficavam salvas em Settings e não afetavam nada — para este público,
+ * tamanho de fonte e redução de movimento não são enfeite.
+ *
+ * Deliberadamente FORA de @layer: o conteúdo de uma @layer é purgado
+ * conforme as classes encontradas no código-fonte, e estas são montadas
+ * dinamicamente (`app-font-${fontSize}`), então nunca apareceriam na
+ * varredura. O prefixo app- evita colidir com utilidades do Tailwind
+ * (font-medium, por exemplo, é peso de fonte).
+ *
+ * O Tailwind dimensiona em rem, então mudar a raiz escala a interface
+ * inteira de forma consistente.
+ */
+html.app-font-small { font-size: 87.5%; }
+html.app-font-medium { font-size: 100%; }
+html.app-font-large { font-size: 112.5%; }
+html.app-font-extra-large { font-size: 125%; }
+
+/* Fora de @layer para vencer as utilidades de animação do Tailwind. */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
