@@ -1016,6 +1016,42 @@ export const appRouter = router({
         });
       }),
 
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        symptomType: z.enum([
+          "social_interaction",
+          "communication",
+          "repetitive_behavior",
+          "sensory_sensitivity",
+          "focus",
+          "executive_function",
+        ]),
+        severity: z.number().int().min(1).max(10),
+        duration: z.number().int().min(1).nullable().optional(),
+        triggers: z.array(z.string()).nullable().optional(),
+        interventions: z.array(z.string()).nullable().optional(),
+        effectiveness: z.number().int().min(1).max(10).nullable().optional(),
+        notes: z.string().nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...campos } = input;
+        // Campos opcionais viram null explicitamente: editar precisa
+        // conseguir limpar o que estava preenchido, e `undefined` faria
+        // o Drizzle ignorar a coluna.
+        return assertOwned(
+          await db.updateSymptomEntry(id, ctx.user.id, {
+            symptomType: campos.symptomType,
+            severity: campos.severity,
+            duration: campos.duration ?? null,
+            triggers: campos.triggers ?? null,
+            interventions: campos.interventions ?? null,
+            effectiveness: campos.effectiveness ?? null,
+            notes: campos.notes ?? null,
+          })
+        );
+      }),
+
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {

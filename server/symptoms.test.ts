@@ -102,6 +102,51 @@ describe("symptoms", () => {
     expect(after.find((e) => e.id === created.id)).toBeUndefined();
   });
 
+  it("should update an existing entry, including clearing optional fields", async () => {
+    const ctx = createAuthContext(307);
+    const caller = appRouter.createCaller(ctx);
+
+    const created = await caller.symptoms.create({
+      symptomType: "focus",
+      severity: 8,
+      duration: 30,
+      triggers: ["barulho"],
+      interventions: ["pausa"],
+      effectiveness: 6,
+      notes: "texto original",
+    });
+
+    await caller.symptoms.update({
+      id: created.id,
+      symptomType: "communication",
+      severity: 3,
+      // Sem duration/triggers/interventions/notes: editar precisa
+      // conseguir limpar o que estava preenchido.
+    });
+
+    const [entry] = await caller.symptoms.list();
+    expect(entry.symptomType).toBe("communication");
+    expect(entry.severity).toBe(3);
+    expect(entry.duration).toBeNull();
+    expect(entry.triggers).toBeNull();
+    expect(entry.interventions).toBeNull();
+    expect(entry.notes).toBeNull();
+  });
+
+  it("should not let one user edit another user's entry", async () => {
+    const alice = appRouter.createCaller(createAuthContext(308));
+    const bob = appRouter.createCaller(createAuthContext(309));
+
+    const created = await alice.symptoms.create({ symptomType: "focus", severity: 9 });
+
+    await expect(
+      bob.symptoms.update({ id: created.id, symptomType: "focus", severity: 1 })
+    ).rejects.toThrow();
+
+    const [intacta] = await alice.symptoms.list();
+    expect(intacta.severity).toBe(9);
+  });
+
   it("should require authentication", async () => {
     const publicCaller = appRouter.createCaller({
       user: null,

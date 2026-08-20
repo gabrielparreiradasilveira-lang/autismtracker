@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { ClipboardList, ArrowLeft, Trash2, Plus } from "lucide-react";
+import { ClipboardList, ArrowLeft, Trash2, Plus, Pencil } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
@@ -50,6 +50,9 @@ export default function Symptoms() {
   const { user, isAuthenticated, loading } = useRequireAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [filterType, setFilterType] = useState<string>("all");
+  // null = criando; número = editando aquele registro. O mesmo formulário
+  // atende os dois casos.
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const [symptomType, setSymptomType] = useState<SymptomType>("focus");
   const [severity, setSeverity] = useState([5]);
@@ -75,6 +78,18 @@ export default function Symptoms() {
     },
   });
 
+  const updateMutation = trpc.symptoms.update.useMutation({
+    onSuccess: () => {
+      toast.success("Registro atualizado!");
+      resetForm();
+      setIsOpen(false);
+      symptomsQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error("Erro ao atualizar: " + error.message);
+    },
+  });
+
   const deleteMutation = trpc.symptoms.delete.useMutation({
     onSuccess: () => {
       toast.success("Registro removido.");
@@ -86,6 +101,7 @@ export default function Symptoms() {
   });
 
   const resetForm = () => {
+    setEditingId(null);
     setSymptomType("focus");
     setSeverity([5]);
     setDuration("");
@@ -93,6 +109,27 @@ export default function Symptoms() {
     setInterventionsText("");
     setEffectiveness([5]);
     setNotes("");
+  };
+
+  const startEditing = (entry: {
+    id: number;
+    symptomType: string;
+    severity: number;
+    duration: number | null;
+    triggers: string[] | null;
+    interventions: string[] | null;
+    effectiveness: number | null;
+    notes: string | null;
+  }) => {
+    setEditingId(entry.id);
+    setSymptomType(entry.symptomType as SymptomType);
+    setSeverity([entry.severity]);
+    setDuration(entry.duration != null ? String(entry.duration) : "");
+    setTriggersText((entry.triggers ?? []).join(", "));
+    setInterventionsText((entry.interventions ?? []).join(", "));
+    setEffectiveness([entry.effectiveness ?? 5]);
+    setNotes(entry.notes ?? "");
+    setIsOpen(true);
   };
 
   const splitToArray = (text: string) =>
@@ -104,11 +141,29 @@ export default function Symptoms() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const interventions = splitToArray(interventionsText);
+    const triggers = splitToArray(triggersText);
+
+    if (editingId != null) {
+      // Ao editar, campos vazios viram null para conseguir limpar o que
+      // estava preenchido antes.
+      updateMutation.mutate({
+        id: editingId,
+        symptomType,
+        severity: severity[0],
+        duration: duration ? parseInt(duration) : null,
+        triggers: triggers.length > 0 ? triggers : null,
+        interventions: interventions.length > 0 ? interventions : null,
+        effectiveness: interventions.length > 0 ? effectiveness[0] : null,
+        notes: notes || null,
+      });
+      return;
+    }
+
     createMutation.mutate({
       symptomType,
       severity: severity[0],
       duration: duration ? parseInt(duration) : undefined,
-      triggers: splitToArray(triggersText).length > 0 ? splitToArray(triggersText) : undefined,
+      triggers: triggers.length > 0 ? triggers : undefined,
       interventions: interventions.length > 0 ? interventions : undefined,
       effectiveness: interventions.length > 0 ? effectiveness[0] : undefined,
       notes: notes || undefined,
@@ -178,7 +233,9 @@ export default function Symptoms() {
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Novo Registro de Sintoma</DialogTitle>
+                <DialogTitle>
+                  {editingId != null ? "Editar Registro de Sintoma" : "Novo Registro de Sintoma"}
+                </DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
@@ -284,10 +341,14 @@ export default function Symptoms() {
                 <div className="flex gap-2">
                   <Button
                     type="submit"
-                    disabled={createMutation.isPending}
+                    disabled={createMutation.isPending || updateMutation.isPending}
                     className="flex-1"
                   >
-                    {createMutation.isPending ? "Salvando..." : "Salvar"}
+                    {createMutation.isPending || updateMutation.isPending
+                      ? "Salvando..."
+                      : editingId != null
+                        ? "Salvar alterações"
+                        : "Salvar"}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
                     Cancelar
@@ -360,14 +421,24 @@ export default function Symptoms() {
                         )}
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(entry.id)}
-                      aria-label="Remover este registro de sintoma"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-600" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => startEditing(entry)}
+                        aria-label={`Editar o registro de ${symptomLabels[entry.symptomType as SymptomType] || entry.symptomType} de ${formatDate(entry.date)}`}
+                      >
+                        <Pencil className="w-4 h-4 text-gray-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(entry.id)}
+                        aria-label={`Remover o registro de ${symptomLabels[entry.symptomType as SymptomType] || entry.symptomType} de ${formatDate(entry.date)}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-red-600" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 {(entry.triggers?.length || entry.interventions?.length || entry.notes) && (

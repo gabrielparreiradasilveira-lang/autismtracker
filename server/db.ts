@@ -949,6 +949,29 @@ export async function deleteSymptomEntry(id: number, userId: number) {
   );
 }
 
+/**
+ * Atualiza um registro de sintoma do próprio usuário.
+ *
+ * O filtro por userId acompanha o padrão das demais mutations por id.
+ * Devolve quantas linhas mudaram para o router poder recusar o que não
+ * pertence a quem pediu.
+ */
+export async function updateSymptomEntry(
+  id: number,
+  userId: number,
+  data: Partial<Omit<InsertSymptomEntry, "id" | "userId">>
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.update(symptomEntries)
+    .set(data)
+    .where(and(eq(symptomEntries.id, id), eq(symptomEntries.userId, userId)))
+    .returning({ id: symptomEntries.id });
+
+  return { affectedRows: result.length };
+}
+
 export async function getSymptomAnalytics(userId: number, days: number = 30) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
