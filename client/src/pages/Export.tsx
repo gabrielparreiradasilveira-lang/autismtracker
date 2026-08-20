@@ -10,6 +10,16 @@ import { trpc } from "@/lib/trpc";
 import { useState } from "react";
 import { toast } from "sonner";
 
+/** Rótulos legíveis para o terapeuta que vai receber o arquivo. */
+const simbolosSintoma: Record<string, string> = {
+  social_interaction: "Interação Social",
+  communication: "Comunicação",
+  repetitive_behavior: "Comportamento Repetitivo",
+  sensory_sensitivity: "Sensibilidade Sensorial",
+  focus: "Foco e Atenção",
+  executive_function: "Função Executiva",
+};
+
 export default function Export() {
   const { user, isAuthenticated, loading } = useRequireAuth();
   const [exportFormat, setExportFormat] = useState("json");
@@ -20,21 +30,59 @@ export default function Export() {
   const triggersQuery = trpc.triggers.list.useQuery();
   const routinesQuery = trpc.routines.list.useQuery();
   const exercisesQuery = trpc.exercises.list.useQuery();
+  const symptomsQuery = trpc.symptoms.list.useQuery();
+  const techniqueAnalyticsQuery = trpc.techniques.getAnalytics.useQuery();
+  const gameStatsQuery = trpc.gamification.getStats.useQuery();
+
+  /**
+   * Recorta uma lista pelo período escolhido.
+   *
+   * O seletor "Período" existia na tela e não filtrava nada: o estado era
+   * lido em zero lugares e a exportação sempre saía completa, ignorando a
+   * escolha. Cada fonte guarda a data num campo diferente, por isso a
+   * função recebe qual usar.
+   */
+  const filtrarPorPeriodo = <T,>(itens: T[], campoData: keyof T): T[] => {
+    if (dateRange === "all") return itens;
+
+    const inicio = new Date();
+    inicio.setDate(inicio.getDate() - (dateRange === "week" ? 7 : 30));
+
+    return itens.filter((item) => {
+      const valor = item[campoData];
+      if (!valor) return false;
+      return new Date(valor as unknown as string) >= inicio;
+    });
+  };
+
+  const rotuloPeriodo =
+    dateRange === "week" ? "Última semana" : dateRange === "month" ? "Último mês" : "Todos os dados";
+
+  const coletar = () => ({
+    moodEntries: filtrarPorPeriodo(moodEntriesQuery.data ?? [], "date"),
+    sensoryTriggers: filtrarPorPeriodo(triggersQuery.data ?? [], "createdAt"),
+    routines: filtrarPorPeriodo(routinesQuery.data ?? [], "createdAt"),
+    exerciseSessions: filtrarPorPeriodo(exercisesQuery.data ?? [], "startedAt"),
+    symptomEntries: filtrarPorPeriodo(symptomsQuery.data ?? [], "date"),
+  });
 
   const exportData = () => {
     setIsExporting(true);
 
     try {
+      const coletado = coletar();
       const data = {
         exportDate: new Date().toISOString(),
+        periodo: rotuloPeriodo,
         user: {
           name: user?.name,
           email: user?.email,
         },
-        moodEntries: moodEntriesQuery.data || [],
-        sensoryTriggers: triggersQuery.data || [],
-        routines: routinesQuery.data || [],
-        exerciseSessions: exercisesQuery.data || [],
+        ...coletado,
+        // Não são séries temporais: são o retrato atual, exportado
+        // inteiro independentemente do período.
+        tecnicas: techniqueAnalyticsQuery.data ?? null,
+        gamificacao: gameStatsQuery.data ?? null,
       };
 
       if (exportFormat === "json") {
@@ -49,25 +97,65 @@ export default function Export() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
       } else if (exportFormat === "csv") {
-        // Export mood entries as CSV
-        const csvRows = [
-          ["Data", "Humor", "Ansiedade", "Estresse", "Energia", "Notas"],
-          ...(moodEntriesQuery.data || []).map(entry => [
-            new Date(entry.date).toLocaleDateString("pt-BR"),
-            entry.moodLevel,
-            entry.anxietyLevel,
-            entry.stressLevel,
-            entry.energyLevel,
-            entry.notes || "",
+        // Uma planilha só, com a origem na primeira coluna: quem abre no
+        // Excel consegue filtrar por tipo sem precisar de vários arquivos.
+        const csvRows: (string | number)[][] = [
+          ["Tipo", "Data", "Campo1", "Campo2", "Campo3", "Campo4", "Observações"],
+          ...coletado.moodEntries.map((e) => [
+            "Humor",
+            new Date(e.date).toLocaleDateString("pt-BR"),
+            `Humor: ${e.moodLevel}/10`,
+            `Ansiedade: ${e.anxietyLevel}/10`,
+            `Estresse: ${e.stressLevel}/10`,
+            `Energia: ${e.energyLevel}/10`,
+            e.notes || "",
+          ]),
+          ...coletado.symptomEntries.map((e) => [
+            "Sintoma",
+            new Date(e.date).toLocaleDateString("pt-BR"),
+            simbolosSintoma[e.symptomType] || e.symptomType,
+            `Severidade: ${e.severity}/10`,
+            e.duration ? `Duração: ${e.duration} min` : "",
+            e.effectiveness ? `Efetividade: ${e.effectiveness}/10` : "",
+            e.notes || "",
+          ]),
+          ...coletado.sensoryTriggers.map((t) => [
+            "Gatilho",
+            new Date(t.createdAt).toLocaleDateString("pt-BR"),
+            t.name,
+            `Categoria: ${t.category}`,
+            `Severidade: ${t.severity}/10`,
+            `Frequência: ${t.frequency}`,
+            t.copingStrategy || "",
+          ]),
+          ...coletado.exerciseSessions.map((s) => [
+            "Exercício",
+            new Date(s.startedAt).toLocaleDateString("pt-BR"),
+            s.exerciseType,
+            `Duração: ${s.duration}s`,
+            s.pattern ? `Padrão: ${s.pattern}` : "",
+            s.rating ? `Avaliação: ${s.rating}/10` : "",
+            s.notes || "",
+          ]),
+          ...coletado.routines.map((r) => [
+            "Rotina",
+            new Date(r.createdAt).toLocaleDateString("pt-BR"),
+            r.title,
+            `Período: ${r.timeOfDay}`,
+            `Conclusões: ${r.totalCompletions}`,
+            `Sequência: ${r.currentStreak} dias`,
+            r.description || "",
           ]),
         ];
-        
-        const csvString = csvRows.map(row => row.map(cell => `"${cell}"`).join(",")).join("\n");
+
+        const csvString = csvRows
+          .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+          .join("\n");
         const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `apoio-autismo-humor-${new Date().toISOString().split('T')[0]}.csv`;
+        link.download = `apoio-autismo-dados-${new Date().toISOString().split('T')[0]}.csv`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -75,24 +163,77 @@ export default function Export() {
       } else if (exportFormat === "txt") {
         let txtContent = `Relatório de Dados - Apoio Autismo\n`;
         txtContent += `Data de Exportação: ${new Date().toLocaleString("pt-BR")}\n`;
+        txtContent += `Período: ${rotuloPeriodo}\n`;
         txtContent += `Usuário: ${user?.name || "Não informado"}\n\n`;
-        
-        txtContent += `=== ENTRADAS DE HUMOR ===\n\n`;
-        (moodEntriesQuery.data || []).forEach(entry => {
+
+        txtContent += `=== ENTRADAS DE HUMOR (${coletado.moodEntries.length}) ===\n\n`;
+        coletado.moodEntries.forEach(entry => {
           txtContent += `Data: ${new Date(entry.date).toLocaleString("pt-BR")}\n`;
           txtContent += `Humor: ${entry.moodLevel}/10 | Ansiedade: ${entry.anxietyLevel}/10 | Estresse: ${entry.stressLevel}/10 | Energia: ${entry.energyLevel}/10\n`;
+          if (entry.triggers?.length) txtContent += `Gatilhos: ${entry.triggers.join(", ")}\n`;
           if (entry.notes) txtContent += `Notas: ${entry.notes}\n`;
           txtContent += `\n`;
         });
 
-        txtContent += `\n=== GATILHOS SENSORIAIS ===\n\n`;
-        (triggersQuery.data || []).forEach(trigger => {
+        txtContent += `\n=== SINTOMAS (${coletado.symptomEntries.length}) ===\n\n`;
+        coletado.symptomEntries.forEach(entry => {
+          txtContent += `Data: ${new Date(entry.date).toLocaleString("pt-BR")}\n`;
+          txtContent += `Tipo: ${simbolosSintoma[entry.symptomType] || entry.symptomType} | Severidade: ${entry.severity}/10\n`;
+          if (entry.duration) txtContent += `Duração: ${entry.duration} min\n`;
+          if (entry.triggers?.length) txtContent += `Gatilhos: ${entry.triggers.join(", ")}\n`;
+          if (entry.interventions?.length) {
+            txtContent += `Intervenções: ${entry.interventions.join(", ")}`;
+            txtContent += entry.effectiveness ? ` (efetividade ${entry.effectiveness}/10)\n` : `\n`;
+          }
+          if (entry.notes) txtContent += `Observações: ${entry.notes}\n`;
+          txtContent += `\n`;
+        });
+
+        txtContent += `\n=== GATILHOS SENSORIAIS (${coletado.sensoryTriggers.length}) ===\n\n`;
+        coletado.sensoryTriggers.forEach(trigger => {
           txtContent += `Nome: ${trigger.name}\n`;
           txtContent += `Categoria: ${trigger.category} | Severidade: ${trigger.severity}/10\n`;
           if (trigger.description) txtContent += `Descrição: ${trigger.description}\n`;
           if (trigger.copingStrategy) txtContent += `Estratégia: ${trigger.copingStrategy}\n`;
           txtContent += `\n`;
         });
+
+        txtContent += `\n=== ROTINAS (${coletado.routines.length}) ===\n\n`;
+        coletado.routines.forEach(routine => {
+          txtContent += `${routine.title} (${routine.timeOfDay})\n`;
+          txtContent += `Conclusões: ${routine.totalCompletions} | Sequência atual: ${routine.currentStreak} dias | Melhor: ${routine.longestStreak} dias\n\n`;
+        });
+
+        txtContent += `\n=== EXERCÍCIOS (${coletado.exerciseSessions.length}) ===\n\n`;
+        coletado.exerciseSessions.forEach(s => {
+          txtContent += `Data: ${new Date(s.startedAt).toLocaleString("pt-BR")}\n`;
+          txtContent += `Tipo: ${s.exerciseType} | Duração: ${s.duration}s`;
+          txtContent += s.rating ? ` | Avaliação: ${s.rating}/10\n` : `\n`;
+          txtContent += `\n`;
+        });
+
+        const tecnicas = techniqueAnalyticsQuery.data;
+        if (tecnicas && tecnicas.totalTechniquesUsed > 0) {
+          txtContent += `\n=== TÉCNICAS DE AUTORREGULAÇÃO ===\n\n`;
+          txtContent += `Técnicas utilizadas: ${tecnicas.totalTechniquesUsed} | Usos totais: ${tecnicas.totalUsageCount}\n`;
+          if (tecnicas.averageEffectiveness != null) {
+            txtContent += `Efetividade média: ${tecnicas.averageEffectiveness}/10\n`;
+          }
+          tecnicas.mostEffective.forEach(t => {
+            txtContent += `- ${t.title}: efetividade ${t.effectiveness}/10, usada ${t.usageCount}x\n`;
+          });
+          txtContent += `\n`;
+        }
+
+        const stats = gameStatsQuery.data as
+          | { level?: number; totalPoints?: number; currentStreak?: number; longestStreak?: number }
+          | null
+          | undefined;
+        if (stats) {
+          txtContent += `\n=== ENGAJAMENTO ===\n\n`;
+          txtContent += `Nível ${stats.level ?? 1} | ${stats.totalPoints ?? 0} pontos\n`;
+          txtContent += `Sequência atual: ${stats.currentStreak ?? 0} dias | Melhor sequência: ${stats.longestStreak ?? 0} dias\n\n`;
+        }
 
         const blob = new Blob([txtContent], { type: "text/plain;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
@@ -118,11 +259,15 @@ export default function Export() {
 
   if (!isAuthenticated || !user) return null;
 
-  const totalEntries = 
-    (moodEntriesQuery.data?.length || 0) +
-    (triggersQuery.data?.length || 0) +
-    (routinesQuery.data?.length || 0) +
-    (exercisesQuery.data?.length || 0);
+  // Conta o que realmente será exportado, já com o período aplicado —
+  // antes o número mostrado ignorava o filtro tanto quanto a exportação.
+  const selecionado = coletar();
+  const totalEntries =
+    selecionado.moodEntries.length +
+    selecionado.symptomEntries.length +
+    selecionado.sensoryTriggers.length +
+    selecionado.routines.length +
+    selecionado.exerciseSessions.length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -155,33 +300,26 @@ export default function Export() {
           <Card>
             <CardHeader>
               <CardTitle>Resumo dos Dados</CardTitle>
+              <p className="text-sm text-gray-600">Contagens já considerando o período escolhido.</p>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {moodEntriesQuery.data?.length || 0}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                {/* Classes escritas por extenso de propósito: o Tailwind
+                    varre o código em busca de nomes literais, e uma
+                    classe montada em template (`bg-${cor}-50`) some do
+                    bundle. */}
+                {[
+                  { rotulo: "Entradas de Humor", valor: selecionado.moodEntries.length, fundo: "bg-purple-50", texto: "text-purple-600" },
+                  { rotulo: "Sintomas", valor: selecionado.symptomEntries.length, fundo: "bg-indigo-50", texto: "text-indigo-600" },
+                  { rotulo: "Gatilhos", valor: selecionado.sensoryTriggers.length, fundo: "bg-green-50", texto: "text-green-600" },
+                  { rotulo: "Rotinas", valor: selecionado.routines.length, fundo: "bg-blue-50", texto: "text-blue-600" },
+                  { rotulo: "Exercícios", valor: selecionado.exerciseSessions.length, fundo: "bg-pink-50", texto: "text-pink-600" },
+                ].map((item) => (
+                  <div key={item.rotulo} className={`text-center p-4 rounded-lg ${item.fundo}`}>
+                    <div className={`text-2xl font-bold ${item.texto}`}>{item.valor}</div>
+                    <div className="text-sm text-gray-600">{item.rotulo}</div>
                   </div>
-                  <div className="text-sm text-gray-600">Entradas de Humor</div>
-                </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    {triggersQuery.data?.length || 0}
-                  </div>
-                  <div className="text-sm text-gray-600">Gatilhos</div>
-                </div>
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {routinesQuery.data?.length || 0}
-                  </div>
-                  <div className="text-sm text-gray-600">Rotinas</div>
-                </div>
-                <div className="text-center p-4 bg-pink-50 rounded-lg">
-                  <div className="text-2xl font-bold text-pink-600">
-                    {exercisesQuery.data?.length || 0}
-                  </div>
-                  <div className="text-sm text-gray-600">Exercícios</div>
-                </div>
+                ))}
               </div>
             </CardContent>
           </Card>
