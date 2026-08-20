@@ -1,5 +1,6 @@
 import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
 import PageLoader from "@/components/PageLoader";
+import TriggerInput from "@/components/TriggerInput";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -288,15 +289,12 @@ export default function Symptoms() {
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="triggers">Gatilhos (separados por vírgula)</Label>
-                  <Input
-                    id="triggers"
-                    value={triggersText}
-                    onChange={(e) => setTriggersText(e.target.value)}
-                    placeholder="Ex: barulho alto, multidão, mudança de rotina"
-                  />
-                </div>
+                <TriggerInput
+                  id="symptom-triggers"
+                  value={triggersText}
+                  onChange={setTriggersText}
+                  placeholder="Ex: barulho alto, multidão, mudança de rotina"
+                />
 
                 <div>
                   <Label htmlFor="interventions">Intervenções utilizadas (separadas por vírgula)</Label>

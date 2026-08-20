@@ -1,8 +1,8 @@
 import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
 import PageLoader from "@/components/PageLoader";
+import TriggerInput from "@/components/TriggerInput";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
@@ -138,15 +138,7 @@ export default function Mood() {
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="triggers">Gatilhos (separados por vírgula)</Label>
-                  <Input
-                    id="triggers"
-                    value={triggers}
-                    onChange={(e) => setTriggers(e.target.value)}
-                    placeholder="Ex: barulho alto, luz forte"
-                  />
-                </div>
+                <TriggerInput id="triggers" value={triggers} onChange={setTriggers} />
 
                 <div>
                   <Label htmlFor="notes">Notas</Label>
