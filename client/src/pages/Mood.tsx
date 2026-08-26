@@ -200,6 +200,23 @@ export default function Mood() {
                       <div>Estresse: {entry.stressLevel}/10</div>
                       <div>Energia: {entry.energyLevel}/10</div>
                     </div>
+                    {/* Os gatilhos eram gravados e nunca exibidos aqui.
+                        Sem vê-los, não havia como conferir se o registro
+                        de fato guardou o gatilho — e quando a correlação
+                        não aparecia, a conclusão natural era que o app
+                        tinha perdido o dado. */}
+                    {entry.triggers && entry.triggers.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {entry.triggers.map((gatilho, i) => (
+                          <span
+                            key={i}
+                            className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded"
+                          >
+                            {gatilho}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     {entry.notes && (
                       <p className="text-sm text-gray-600 mt-2">{entry.notes}</p>
                     )}

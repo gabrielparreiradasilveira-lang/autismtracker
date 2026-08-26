@@ -260,3 +260,60 @@ describe("analytics.correlations", () => {
     expect(correlations[0].registered).toBeNull();
   });
 });
+
+describe("analytics.correlations — o vazio precisa se explicar", () => {
+  it("com gatilhos abaixo do mínimo, devolve quais são, quantas ocorrências e o total", async () => {
+    const caller = appRouter.createCaller(createAuthContext(810));
+
+    // Dois gatilhos registrados, nenhum chegando a 3: é o estado em que a
+    // tela dizia "nenhum gatilho registrado" e parecia ter perdido tudo.
+    for (let i = 0; i < 2; i++) {
+      await caller.mood.create({
+        moodLevel: 4,
+        anxietyLevel: 7,
+        stressLevel: 6,
+        energyLevel: 4,
+        triggers: ["barulho da obra"],
+        timezoneOffsetMinutes: 0,
+      });
+    }
+    await caller.mood.create({
+      moodLevel: 5,
+      anxietyLevel: 6,
+      stressLevel: 5,
+      energyLevel: 5,
+      triggers: ["fila do mercado"],
+      timezoneOffsetMinutes: 0,
+    });
+
+    const result = await caller.analytics.correlations();
+
+    expect(result.correlations).toEqual([]);
+    // Três ocorrências gravadas ao todo — o número que separa "não gravou"
+    // de "gravou pouco".
+    expect(result.totalTriggersLogged).toBe(3);
+    expect(result.insufficientSample.count).toBe(2);
+    // Ordenado pelo mais próximo do mínimo.
+    expect(result.insufficientSample.triggers).toEqual([
+      { trigger: "barulho da obra", occurrences: 2 },
+      { trigger: "fila do mercado", occurrences: 1 },
+    ]);
+  });
+
+  it("quem nunca marcou gatilho tem total zero, e não é o mesmo que ter marcado pouco", async () => {
+    const caller = appRouter.createCaller(createAuthContext(811));
+
+    await caller.mood.create({
+      moodLevel: 6,
+      anxietyLevel: 4,
+      stressLevel: 4,
+      energyLevel: 6,
+      timezoneOffsetMinutes: 0,
+    });
+
+    const result = await caller.analytics.correlations();
+
+    expect(result.totalTriggersLogged).toBe(0);
+    expect(result.insufficientSample.count).toBe(0);
+  });
+});

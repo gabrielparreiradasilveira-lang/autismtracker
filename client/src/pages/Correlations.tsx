@@ -37,6 +37,46 @@ export default function Correlations() {
   // Sort by impact (lower mood = higher impact)
   const sortedCorrelations = [...correlations].sort((a, b) => a.avgMood - b.avgMood);
 
+  const registrados = data?.totalTriggersLogged ?? 0;
+  const faltantes = data?.insufficientSample.triggers ?? [];
+  const minimo = data?.insufficientSample.minOccurrences ?? 3;
+
+  /**
+   * Gatilhos que existem nos registros mas ainda não atingiram o mínimo.
+   *
+   * Este bloco vivia dentro do ramo "há correlações", ou seja, aparecia
+   * só para quem já não precisava dele. Quem tinha todos os gatilhos
+   * abaixo do limiar via apenas "nenhum gatilho registrado" e concluía,
+   * razoavelmente, que o app tinha perdido os registros. Agora aparece
+   * nos dois casos, e diz quanto falta para cada um.
+   */
+  const quaseLa =
+    faltantes.length > 0 ? (
+      <Card className="bg-gray-50">
+        <CardContent className="pt-6">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">
+            {plural(faltantes.length, "gatilho ainda sem", "gatilhos ainda sem")} amostra
+            suficiente
+          </h3>
+          <ul className="space-y-2">
+            {faltantes.map((g) => (
+              <li key={g.trigger} className="flex justify-between gap-3 text-sm">
+                <span className="text-gray-700">{g.trigger}</span>
+                <span className="text-gray-600 text-right">
+                  {plural(g.occurrences, "ocorrência", "ocorrências")} — faltam{" "}
+                  {plural(minimo - g.occurrences, "registro", "registros")}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-gray-500 mt-3">
+            Uma média de uma ou duas ocorrências descreveria o acaso, não um padrão. Por isso a
+            comparação só aparece a partir de {minimo}.
+          </p>
+        </CardContent>
+      </Card>
+    ) : null;
+
   const getImpactLevel = (avgMood: number) => {
     if (avgMood <= 4) return { level: "Alto", color: "red", icon: AlertCircle };
     if (avgMood <= 6) return { level: "Moderado", color: "yellow", icon: Info };
@@ -228,19 +268,7 @@ export default function Correlations() {
               })}
             </div>
 
-            {/* Gatilhos ainda sem amostra suficiente */}
-            {data && data.insufficientSample.count > 0 && (
-              <Card className="bg-gray-50">
-                <CardContent className="pt-6">
-                  <p className="text-sm text-gray-700">
-                    <strong>{data.insufficientSample.count} gatilho(s)</strong> ainda não aparecem na
-                    lista acima: {data.insufficientSample.triggers.join(", ")}. É preciso registrá-los
-                    em pelo menos {data.insufficientSample.minOccurrences} dias para que a média
-                    signifique algo.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            {quaseLa}
 
             {/* Summary Card */}
             <Card>
@@ -299,18 +327,36 @@ export default function Correlations() {
             </Card>
           </div>
         ) : (
-          <Card>
-            <CardContent className="p-6 text-center">
-              <GitBranch className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-600 mb-4">
-                Nenhum gatilho foi registrado em pelo menos 3 entradas de humor ainda. Ao registrar
-                seu humor, marque os gatilhos daquele dia para que esta comparação apareça.
-              </p>
-              <Link href="/mood">
-                <Button>Registrar Humor</Button>
-              </Link>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            <Card>
+              <CardContent className="p-6 text-center">
+                <GitBranch className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                {registrados === 0 ? (
+                  <p className="text-sm text-gray-600 mb-4">
+                    Você ainda não marcou nenhum gatilho ao registrar seu humor. Ao registrar,
+                    preencha o campo de gatilhos para que esta comparação apareça.
+                  </p>
+                ) : (
+                  // O caso que fazia a tela parecer quebrada: os gatilhos
+                  // estão gravados, só não atingiram o mínimo. Dizer isso
+                  // com os números é a diferença entre "sumiu" e "faltam 2".
+                  <p className="text-sm text-gray-600 mb-4">
+                    Seus gatilhos estão registrados —{" "}
+                    {plural(registrados, "ocorrência registrada", "ocorrências registradas")} até
+                    agora. Nenhum deles chegou às{" "}
+                    {data?.insufficientSample.minOccurrences} ocorrências necessárias para que a
+                    média signifique alguma coisa, então ainda não há comparação a mostrar. Veja
+                    abaixo quanto falta para cada um.
+                  </p>
+                )}
+                <Link href="/mood">
+                  <Button>Registrar Humor</Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            {quaseLa}
+          </div>
         )}
 
         {/* Symptom <-> Mood Correlation */}

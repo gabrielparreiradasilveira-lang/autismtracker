@@ -202,8 +202,13 @@ describe("analytics.correlations — amostra mínima", () => {
     const result = await caller.analytics.correlations();
 
     expect(result.correlations.find((c) => c.trigger === "evento raro")).toBeUndefined();
-    expect(result.insufficientSample.triggers).toContain("evento raro");
+    // A contagem vai junto do nome: é o que permite a tela dizer "faltam 2"
+    // em vez de só listar o gatilho.
+    expect(result.insufficientSample.triggers).toEqual([
+      { trigger: "evento raro", occurrences: 1 },
+    ]);
     expect(result.insufficientSample.minOccurrences).toBe(3);
+    expect(result.totalTriggersLogged).toBe(1);
   });
 
   it("gatilho com 3 ocorrências entra no ranking", async () => {
@@ -225,7 +230,7 @@ describe("analytics.correlations — amostra mínima", () => {
 
     expect(found).toBeDefined();
     expect(found!.occurrences).toBe(3);
-    expect(result.insufficientSample.triggers).not.toContain("multidão");
+    expect(result.insufficientSample.triggers.map((t) => t.trigger)).not.toContain("multidão");
   });
 });
 

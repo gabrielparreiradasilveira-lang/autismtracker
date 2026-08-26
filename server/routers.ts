@@ -670,9 +670,18 @@ export const appRouter = router({
         correlations,
         insufficientSample: {
           count: insufficientSample.length,
-          triggers: insufficientSample.map((c) => c.trigger),
+          // Com a contagem junto, a tela consegue dizer "faltam 2" em vez
+          // de só listar o nome. Sem isso, quem tem todos os gatilhos
+          // abaixo do limiar lê "nenhum gatilho registrado" e conclui que
+          // o app perdeu os registros — foi exatamente o que aconteceu.
+          triggers: insufficientSample
+            .map((c) => ({ trigger: c.trigger, occurrences: c.occurrences }))
+            .sort((a, b) => b.occurrences - a.occurrences),
           minOccurrences: MIN_OCCURRENCES_FOR_CORRELATION,
         },
+        // Quantos gatilhos a pessoa registrou ao todo, independentemente
+        // do limiar: é o número que separa "não gravou" de "gravou pouco".
+        totalTriggersLogged: all.reduce((soma, c) => soma + c.occurrences, 0),
       };
     }),
 
