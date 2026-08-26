@@ -391,6 +391,10 @@ export const appRouter = router({
     list: protectedProcedure.query(async ({ ctx }) => {
       return await db.getExerciseSessionsByUser(ctx.user.id);
     }),
+
+    getAnalytics: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getExerciseAnalytics(ctx.user.id);
+    }),
   }),
 
   analytics: router({

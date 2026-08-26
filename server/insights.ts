@@ -15,6 +15,7 @@
  * - Nada de diagnóstico nem de substituir acompanhamento profissional.
  */
 import {
+  getExerciseAnalytics,
   getRoutineMoodCorrelations,
   getSymptomAnalytics,
   getTechniqueAnalytics,
@@ -266,6 +267,45 @@ async function mostEffectiveTechnique(userId: number): Promise<GeneratorResult> 
   };
 }
 
+/**
+ * 7. Padrão de respiração com melhor avaliação.
+ *
+ * Só compara padrões com pelo menos MIN_OCCURRENCES avaliações — abaixo
+ * disso "o melhor padrão" seria uma opinião de um dia só.
+ */
+async function breathingEffectiveness(userId: number): Promise<GeneratorResult> {
+  const id = "breathing-effectiveness";
+  const analytics = await getExerciseAnalytics(userId);
+
+  const elegiveis = analytics.byPattern.filter(
+    (p) => p.averageRating != null && p.ratedSessions >= MIN_OCCURRENCES
+  );
+
+  if (elegiveis.length === 0) {
+    return {
+      id,
+      missing:
+        analytics.totalSessions === 0
+          ? `Você ainda não fez nenhum exercício de respiração. Ao terminar um, responda se ajudou: com ${MIN_OCCURRENCES} respostas no mesmo padrão dá para dizer qual funciona melhor para você.`
+          : `Você fez ${plural(analytics.totalSessions, "exercício", "exercícios")} de respiração e avaliou ${analytics.ratedSessions}. São necessárias ${MIN_OCCURRENCES} avaliações do mesmo padrão para comparar.`,
+    };
+  }
+
+  const melhor = elegiveis[0];
+  const minutos = Math.round(melhor.averageDurationSeconds / 60);
+
+  return {
+    id,
+    sampleSize: melhor.ratedSessions,
+    pattern: `Você avaliou o padrão ${melhor.pattern} em ${melhor.averageRating}/10, depois de ${plural(melhor.ratedSessions, "sessão avaliada", "sessões avaliadas")}.`,
+    meaning:
+      elegiveis.length === 1
+        ? `É o único padrão que você avaliou o suficiente para comparar. As sessões duram em média ${plural(minutos, "minuto", "minutos")}.`
+        : `É o padrão mais bem avaliado entre os ${elegiveis.length} que você praticou, com sessões de ${plural(minutos, "minuto", "minutos")} em média.`,
+    action: { label: "Praticar este padrão", route: "/breathing" },
+  };
+}
+
 export async function generateInsights(userId: number, timezoneOffsetMinutes: number) {
   const fuso = timezoneOffsetMinutes;
   const results = await Promise.all([
@@ -275,6 +315,7 @@ export async function generateInsights(userId: number, timezoneOffsetMinutes: nu
     triggerVsSymptom(userId, fuso),
     mostEffectiveTechnique(userId),
     symptomDuration(userId, fuso),
+    breathingEffectiveness(userId),
   ]);
 
   return {

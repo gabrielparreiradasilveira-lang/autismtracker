@@ -44,7 +44,7 @@ describe("analytics.insights — dados insuficientes", () => {
     const { insights, missing } = await caller.analytics.insights({ timezoneOffsetMinutes: 0 });
 
     expect(insights).toEqual([]);
-    expect(missing.length).toBe(6);
+    expect(missing.length).toBe(7);
     // Nada de conselho genérico: cada item diz o que falta.
     for (const item of missing) {
       expect(item.missing.length).toBeGreaterThan(20);

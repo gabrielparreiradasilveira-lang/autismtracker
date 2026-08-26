@@ -1228,6 +1228,62 @@ export async function getSymptomMoodCorrelation(
   };
 }
 
+/**
+ * Efetividade dos exercícios de respiração, por padrão respiratório.
+ *
+ * A coluna `rating` existe desde o começo e nunca foi preenchida: a tela
+ * de respiração salvava a sessão sem jamais perguntar se tinha ajudado.
+ * Com a pergunta no fim da sessão, dá para responder qual padrão funciona
+ * melhor para esta pessoa em vez de listar os três como equivalentes.
+ */
+export async function getExerciseAnalytics(userId: number) {
+  const sessions = await getExerciseSessionsByUser(userId);
+  const concluidas = sessions.filter((s) => s.completed);
+
+  const porPadrao: Record<string, { notaSoma: number; notaCount: number; duracaoSoma: number; total: number }> = {};
+
+  for (const sessao of concluidas) {
+    // Sessão sem padrão anotado ainda conta no total; só não entra no
+    // ranking por padrão, que é o que a análise compara.
+    const chave = sessao.pattern;
+    if (!chave) continue;
+    if (!porPadrao[chave]) {
+      porPadrao[chave] = { notaSoma: 0, notaCount: 0, duracaoSoma: 0, total: 0 };
+    }
+    porPadrao[chave].total++;
+    porPadrao[chave].duracaoSoma += sessao.duration;
+    if (sessao.rating != null) {
+      porPadrao[chave].notaSoma += sessao.rating;
+      porPadrao[chave].notaCount++;
+    }
+  }
+
+  const byPattern = Object.entries(porPadrao)
+    .map(([pattern, d]) => ({
+      pattern,
+      sessions: d.total,
+      ratedSessions: d.notaCount,
+      averageRating: d.notaCount > 0 ? Math.round((d.notaSoma / d.notaCount) * 10) / 10 : null,
+      averageDurationSeconds: Math.round(d.duracaoSoma / d.total),
+    }))
+    .sort((a, b) => (b.averageRating ?? -1) - (a.averageRating ?? -1));
+
+  const avaliadas = concluidas.filter((s) => s.rating != null);
+
+  return {
+    totalSessions: concluidas.length,
+    ratedSessions: avaliadas.length,
+    averageRating:
+      avaliadas.length > 0
+        ? Math.round(
+            (avaliadas.reduce((soma, s) => soma + (s.rating ?? 0), 0) / avaliadas.length) * 10
+          ) / 10
+        : null,
+    totalSeconds: concluidas.reduce((soma, s) => soma + s.duration, 0),
+    byPattern,
+  };
+}
+
 export async function getTechniqueAnalytics(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
