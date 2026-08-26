@@ -545,6 +545,16 @@ export const appRouter = router({
      * impacto sem mostrar a estratégia que a própria pessoa já tinha
      * escrito para ele, em outra tela.
      */
+    /** Humor médio por período do dia, no relógio do usuário. */
+    byTimeOfDay: protectedProcedure
+      .input(z.object({
+        days: z.number().int().min(7).max(365).default(90),
+        timezoneOffsetMinutes: z.number(),
+      }))
+      .query(async ({ ctx, input }) => {
+        return await db.getMoodByTimeOfDay(ctx.user.id, input.timezoneOffsetMinutes, input.days);
+      }),
+
     correlations: protectedProcedure.query(async ({ ctx }) => {
       const moodEntries = await db.getMoodEntriesByUser(ctx.user.id);
       const cadastrados = await db.getSensoryTriggersByUser(ctx.user.id);

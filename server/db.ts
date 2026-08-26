@@ -1800,3 +1800,64 @@ export async function getDiaryTimeline(
     )
     .sort((a, b) => b.date.getTime() - a.date.getTime());
 }
+
+/**
+ * Humor médio por período do dia, no relógio do usuário.
+ *
+ * Os registros de humor sempre tiveram horário exato e ninguém lia — a
+ * data era usada só para agrupar por dia. Saber que o humor cai à noite
+ * (ou que a ansiedade é mais alta de manhã) é o tipo de padrão que
+ * muda o planejamento do dia, e já estava nos dados.
+ *
+ * As faixas seguem os mesmos nomes que a pessoa já escolhe ao criar uma
+ * rotina, para não inventar um segundo vocabulário de horário.
+ */
+export const FAIXAS_DO_DIA = [
+  { id: "morning", label: "Manhã", inicio: 5, fim: 11 },
+  { id: "afternoon", label: "Tarde", inicio: 12, fim: 17 },
+  { id: "evening", label: "Noite", inicio: 18, fim: 23 },
+  { id: "night", label: "Madrugada", inicio: 0, fim: 4 },
+] as const;
+
+export function faixaDaHora(hora: number) {
+  return FAIXAS_DO_DIA.find((f) => hora >= f.inicio && hora <= f.fim)!;
+}
+
+export async function getMoodByTimeOfDay(
+  userId: number,
+  timezoneOffsetMinutes: number,
+  days: number = 90
+) {
+  const inicio = new Date();
+  inicio.setDate(inicio.getDate() - days);
+
+  const entries = await getMoodEntriesByUser(userId, inicio);
+
+  const acumulado: Record<string, { mood: number; anxiety: number; energy: number; count: number }> = {};
+
+  for (const entry of entries) {
+    const hora = toUserWallClock(timezoneOffsetMinutes, new Date(entry.date)).getUTCHours();
+    const faixa = faixaDaHora(hora).id;
+    if (!acumulado[faixa]) acumulado[faixa] = { mood: 0, anxiety: 0, energy: 0, count: 0 };
+    acumulado[faixa].mood += entry.moodLevel;
+    acumulado[faixa].anxiety += entry.anxietyLevel;
+    acumulado[faixa].energy += entry.energyLevel;
+    acumulado[faixa].count++;
+  }
+
+  const arredondar = (n: number) => Math.round(n * 10) / 10;
+
+  const byTimeOfDay = FAIXAS_DO_DIA.filter((f) => acumulado[f.id]).map((f) => {
+    const d = acumulado[f.id];
+    return {
+      timeOfDay: f.id as string,
+      label: f.label as string,
+      averageMood: arredondar(d.mood / d.count),
+      averageAnxiety: arredondar(d.anxiety / d.count),
+      averageEnergy: arredondar(d.energy / d.count),
+      count: d.count,
+    };
+  });
+
+  return { days, totalEntries: entries.length, byTimeOfDay };
+}

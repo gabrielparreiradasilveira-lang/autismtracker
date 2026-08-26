@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
+import { createMoodEntry } from "./db";
 import type { TrpcContext } from "./_core/context";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
@@ -27,6 +28,18 @@ function createAuthContext(userId: number): TrpcContext {
 
 type Caller = ReturnType<typeof appRouter.createCaller>;
 
+/** Registro de humor com data e hora escolhidas — o router usa new Date(). */
+const dbCreateMood = (userId: number, date: Date, moodLevel: number) =>
+  createMoodEntry({
+    userId,
+    date,
+    moodLevel,
+    anxietyLevel: 5,
+    stressLevel: 5,
+    energyLevel: 5,
+    triggers: null,
+  });
+
 const insightById = async (caller: Caller, id: string) => {
   const { insights } = await caller.analytics.insights({ timezoneOffsetMinutes: 0 });
   return insights.find((i) => i.id === id);
@@ -44,7 +57,7 @@ describe("analytics.insights — dados insuficientes", () => {
     const { insights, missing } = await caller.analytics.insights({ timezoneOffsetMinutes: 0 });
 
     expect(insights).toEqual([]);
-    expect(missing.length).toBe(7);
+    expect(missing.length).toBe(8);
     // Nada de conselho genérico: cada item diz o que falta.
     for (const item of missing) {
       expect(item.missing.length).toBeGreaterThan(20);
@@ -250,5 +263,36 @@ describe("analytics.predictions — descreve em vez de prever", () => {
     expect(result.variability).toBe(0);
     expect(result).not.toHaveProperty("confidence");
     expect(result).not.toHaveProperty("predictedMood");
+  });
+});
+
+describe("insight: humor por período do dia", () => {
+  it("com registros em dois períodos, aponta o período de humor mais baixo", async () => {
+    const userId = 614;
+    const fuso = new Date().getTimezoneOffset();
+
+    const emHora = (diasAtras: number, hora: number, moodLevel: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() - diasAtras);
+      d.setHours(hora, 0, 0, 0);
+      return dbCreateMood(userId, d, moodLevel);
+    };
+
+    for (let i = 1; i <= 3; i++) {
+      await emHora(i, 9, 8);
+      await emHora(i, 22, 3);
+    }
+
+    const { insights } = await appRouter
+      .createCaller(createAuthContext(userId))
+      .analytics.insights({ timezoneOffsetMinutes: fuso });
+
+    const insight = insights.find((i) => i.id === "mood-time-of-day");
+
+    expect(insight).toBeDefined();
+    expect(insight!.pattern).toContain("manhã");
+    expect(insight!.pattern).toContain("8.0");
+    expect(insight!.meaning).toContain("Noite");
+    expect(insight!.action.route).toBe("/routines");
   });
 });

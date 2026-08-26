@@ -52,6 +52,7 @@ export default function Analytics() {
   const trendsQuery = trpc.analytics.trends.useQuery({ days: 30 });
   const symptomAnalyticsQuery = trpc.symptoms.getAnalytics.useQuery({ days: 30, timezoneOffsetMinutes: fusoDoUsuario() });
   const techniqueAnalyticsQuery = trpc.techniques.getAnalytics.useQuery();
+  const byTimeOfDayQuery = trpc.analytics.byTimeOfDay.useQuery({ days: 90, timezoneOffsetMinutes: fusoDoUsuario() });
 
   if (loading) return <PageLoader />;
 
@@ -270,6 +271,34 @@ export default function Analytics() {
               Médias dos últimos {patterns.days} dias, sobre{" "}
               {plural(patterns.totalEntries, "registro", "registros")} de humor.
             </p>
+
+            {/* Humor por período do dia */}
+            {(byTimeOfDayQuery.data?.byTimeOfDay.length ?? 0) > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Humor por Período do Dia</CardTitle>
+                  <p className="text-sm text-gray-600">
+                    Média dos seus registros nos últimos {byTimeOfDayQuery.data!.days} dias,
+                    agrupados pela hora em que você registrou.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {byTimeOfDayQuery.data!.byTimeOfDay.map((faixa) => (
+                    <div key={faixa.timeOfDay} className="flex justify-between items-start gap-3">
+                      <span className="text-sm text-gray-600">{faixa.label}</span>
+                      <span className="text-right">
+                        <span className="font-semibold block">
+                          Humor {faixa.averageMood}/10 · ansiedade {faixa.averageAnxiety}/10
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {plural(faixa.count, "registro", "registros")}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Trend Chart */}
             {trends && trends.entries.length > 0 && (

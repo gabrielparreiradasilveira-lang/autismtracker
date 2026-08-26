@@ -177,3 +177,31 @@ describe("sugestão de horário de lembrete", () => {
     expect(noFusoDoServidor.suggestions[0].time).toBe("23:00");
   });
 });
+
+describe("humor por período do dia", () => {
+  it("agrupa pela hora local e devolve a média de cada faixa", async () => {
+    const userId = 706;
+
+    // Três registros às 09h e três às 22h, no fuso de quem usa.
+    for (let i = 1; i <= 3; i++) {
+      await registrarHumor(userId, diasAtras(i, 9), 8);
+      await registrarHumor(userId, diasAtras(i, 22), 3);
+    }
+
+    const resultado = await db.getMoodByTimeOfDay(userId, FUSO, 90);
+    const manha = resultado.byTimeOfDay.find((f) => f.timeOfDay === "morning")!;
+    const noite = resultado.byTimeOfDay.find((f) => f.timeOfDay === "evening")!;
+
+    expect(manha.averageMood).toBe(8);
+    expect(manha.count).toBe(3);
+    expect(noite.averageMood).toBe(3);
+    expect(noite.count).toBe(3);
+  });
+
+  it("a faixa é a do relógio do usuário, não a do servidor", () => {
+    // 01h UTC é madrugada em UTC, mas 22h — noite — em UTC-3.
+    expect(db.faixaDaHora(1).id).toBe("night");
+    const emUtcMenos3 = db.toUserWallClock(180, new Date("2026-03-10T01:00:00.000Z"));
+    expect(db.faixaDaHora(emUtcMenos3.getUTCHours()).id).toBe("evening");
+  });
+});

@@ -16,6 +16,7 @@
  */
 import {
   getExerciseAnalytics,
+  getMoodByTimeOfDay,
   getRoutineMoodCorrelations,
   getSymptomAnalytics,
   getTechniqueAnalytics,
@@ -306,6 +307,45 @@ async function breathingEffectiveness(userId: number): Promise<GeneratorResult> 
   };
 }
 
+/**
+ * 8. Humor por período do dia.
+ *
+ * Exige MIN_OCCURRENCES registros em cada uma de duas faixas — comparar
+ * "manhã" com um registro só contra "noite" com vinte não é comparação.
+ */
+async function moodByTimeOfDay(userId: number, fuso: number): Promise<GeneratorResult> {
+  const id = "mood-time-of-day";
+  const analytics = await getMoodByTimeOfDay(userId, fuso, 90);
+
+  const eligible = analytics.byTimeOfDay.filter((f) => f.count >= MIN_OCCURRENCES);
+  if (eligible.length < 2) {
+    return {
+      id,
+      missing: `Registre humor pelo menos ${MIN_OCCURRENCES} vezes em dois períodos diferentes do dia (manhã, tarde, noite ou madrugada) para comparar os períodos. Você tem ${plural(analytics.totalEntries, "registro", "registros")} nos últimos 90 dias.`,
+    };
+  }
+
+  const ordenado = [...eligible].sort((a, b) => b.averageMood - a.averageMood);
+  const melhor = ordenado[0];
+  const pior = ordenado[ordenado.length - 1];
+
+  if (melhor.averageMood - pior.averageMood < 1) {
+    return {
+      id,
+      missing:
+        "Seu humor médio é parecido em todos os períodos do dia registrados — nenhum se destaca até agora.",
+    };
+  }
+
+  return {
+    id,
+    sampleSize: eligible.reduce((soma, f) => soma + f.count, 0),
+    pattern: `De ${melhor.label.toLowerCase()}, seu humor médio é ${melhor.averageMood.toFixed(1)} (${plural(melhor.count, "registro", "registros")}). De ${pior.label.toLowerCase()}, ${pior.averageMood.toFixed(1)} (${plural(pior.count, "registro", "registros")}).`,
+    meaning: `${pior.label} é o período em que seu humor aparece mais baixo nos seus registros. Vale deixar as tarefas mais pesadas para ${melhor.label.toLowerCase()} e reservar apoios para ${pior.label.toLowerCase()}.`,
+    action: { label: "Ver minhas rotinas", route: "/routines" },
+  };
+}
+
 export async function generateInsights(userId: number, timezoneOffsetMinutes: number) {
   const fuso = timezoneOffsetMinutes;
   const results = await Promise.all([
@@ -316,6 +356,7 @@ export async function generateInsights(userId: number, timezoneOffsetMinutes: nu
     mostEffectiveTechnique(userId),
     symptomDuration(userId, fuso),
     breathingEffectiveness(userId),
+    moodByTimeOfDay(userId, fuso),
   ]);
 
   return {
