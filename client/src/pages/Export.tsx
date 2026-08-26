@@ -31,6 +31,7 @@ export default function Export() {
   const routinesQuery = trpc.routines.list.useQuery();
   const exercisesQuery = trpc.exercises.list.useQuery();
   const symptomsQuery = trpc.symptoms.list.useQuery();
+  const diaryQuery = trpc.diary.timeline.useQuery({ sources: ["diary"] });
   const techniqueAnalyticsQuery = trpc.techniques.getAnalytics.useQuery();
   const gameStatsQuery = trpc.gamification.getStats.useQuery();
 
@@ -64,6 +65,9 @@ export default function Export() {
     routines: filtrarPorPeriodo(routinesQuery.data ?? [], "createdAt"),
     exerciseSessions: filtrarPorPeriodo(exercisesQuery.data ?? [], "startedAt"),
     symptomEntries: filtrarPorPeriodo(symptomsQuery.data ?? [], "date"),
+    // Só as entradas avulsas: as anotações de humor, sintoma, rotina e
+    // exercício já saem junto do registro a que pertencem.
+    diaryEntries: filtrarPorPeriodo(diaryQuery.data ?? [], "date"),
   });
 
   const exportData = () => {
@@ -137,6 +141,15 @@ export default function Export() {
             s.rating ? `Avaliação: ${s.rating}/10` : "",
             s.notes || "",
           ]),
+          ...coletado.diaryEntries.map((e) => [
+            "Diário",
+            new Date(e.date).toLocaleDateString("pt-BR"),
+            "",
+            "",
+            "",
+            "",
+            e.content,
+          ]),
           ...coletado.routines.map((r) => [
             "Rotina",
             new Date(r.createdAt).toLocaleDateString("pt-BR"),
@@ -187,6 +200,12 @@ export default function Export() {
           }
           if (entry.notes) txtContent += `Observações: ${entry.notes}\n`;
           txtContent += `\n`;
+        });
+
+        txtContent += `\n=== DIÁRIO (${coletado.diaryEntries.length}) ===\n\n`;
+        coletado.diaryEntries.forEach(entry => {
+          txtContent += `Data: ${new Date(entry.date).toLocaleString("pt-BR")}\n`;
+          txtContent += `${entry.content}\n\n`;
         });
 
         txtContent += `\n=== GATILHOS SENSORIAIS (${coletado.sensoryTriggers.length}) ===\n\n`;

@@ -688,6 +688,49 @@ export const appRouter = router({
       }),
   }),
 
+  /**
+   * Diário: a linha do tempo junta as anotações que já existiam presas em
+   * humor, sintomas, rotinas e exercícios com as entradas avulsas desta
+   * tabela nova. Só as avulsas são editáveis por aqui — as outras
+   * pertencem ao registro de origem, e o item leva de volta a ele.
+   */
+  diary: router({
+    create: protectedProcedure
+      .input(z.object({ content: z.string().min(1).max(10000) }))
+      .mutation(async ({ ctx, input }) => {
+        return await db.createDiaryEntry({
+          userId: ctx.user.id,
+          content: input.content,
+          date: new Date(),
+          createdAt: new Date(),
+        });
+      }),
+
+    update: protectedProcedure
+      .input(z.object({ id: z.number(), content: z.string().min(1).max(10000) }))
+      .mutation(async ({ ctx, input }) => {
+        return assertOwned(await db.updateDiaryEntry(input.id, ctx.user.id, input.content));
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return assertOwned(await db.deleteDiaryEntry(input.id, ctx.user.id));
+      }),
+
+    timeline: protectedProcedure
+      .input(z.object({
+        days: z.number().int().min(1).max(3650).optional(),
+        search: z.string().max(200).optional(),
+        sources: z
+          .array(z.enum(["diary", "mood", "symptom", "routine", "exercise"]))
+          .optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        return await db.getDiaryTimeline(ctx.user.id, input ?? {});
+      }),
+  }),
+
   reminders: router({
     create: protectedProcedure
       .input(z.object({

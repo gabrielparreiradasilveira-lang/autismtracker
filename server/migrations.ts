@@ -84,6 +84,25 @@ CREATE TABLE IF NOT EXISTS symptom_entries (
   notes TEXT
 );
 
+/*
+ * Entrada de diário avulsa: uma anotação do dia que não pertence a um
+ * registro de humor, sintoma, rotina ou exercício. As anotações desses
+ * quatro já existem em colunas de notas próprias; a linha do tempo do
+ * diário junta todas com estas.
+ *
+ * Tabela nova, e não coluna nova: este arquivo só sabe criar tabelas
+ * (CREATE TABLE IF NOT EXISTS), o que se aplica sem problema a um banco
+ * já existente. Acrescentar coluna a uma tabela existente não chegaria
+ * ao banco em produção.
+ */
+CREATE TABLE IF NOT EXISTS diary_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  userId INTEGER NOT NULL,
+  date INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  createdAt INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS reminders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   userId INTEGER NOT NULL,
@@ -313,6 +332,7 @@ CREATE TABLE IF NOT EXISTS crisis_techniques (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mood_entries_user ON mood_entries(userId, date);
+CREATE INDEX IF NOT EXISTS idx_diary_entries_user ON diary_entries(userId, date);
 CREATE INDEX IF NOT EXISTS idx_routine_entries_user ON routine_entries(userId, date);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(userId, read);
 CREATE INDEX IF NOT EXISTS idx_crisis_events_user ON crisis_events(userId, startedAt);

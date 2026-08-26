@@ -215,3 +215,22 @@ export const userSettings = sqliteTable("user_settings", {
 
 export type UserSettings = typeof userSettings.$inferSelect;
 export type InsertUserSettings = typeof userSettings.$inferInsert;
+
+/**
+ * Diário: anotação avulsa do dia.
+ *
+ * As anotações que já existem em mood_entries, symptom_entries,
+ * routine_entries e exercise_sessions continuam onde estão — esta tabela
+ * guarda só o que não pertence a nenhum desses registros. A linha do
+ * tempo do diário lê as cinco fontes juntas.
+ */
+export const diaryEntries = sqliteTable("diary_entries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  date: timestamp("date").$defaultFn(() => new Date()).notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("createdAt").$defaultFn(() => new Date()).notNull(),
+});
+
+export type DiaryEntry = typeof diaryEntries.$inferSelect;
+export type InsertDiaryEntry = typeof diaryEntries.$inferInsert;

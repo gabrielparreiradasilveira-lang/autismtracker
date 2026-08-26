@@ -5,7 +5,9 @@ import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import fs from "fs";
 import path from "path";
 import {
+  diaryEntries,
   exerciseSessions,
+  InsertDiaryEntry,
   InsertExerciseSession,
   InsertMoodEntry,
   InsertReminder,
@@ -1635,4 +1637,166 @@ export async function getTodayRoutineEntries(userId: number, timezoneOffsetMinut
       gte(routineEntries.date, todayStart),
       lte(routineEntries.date, todayEnd)
     ));
+}
+
+// ===== Diário =====
+
+export async function createDiaryEntry(entry: InsertDiaryEntry) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(diaryEntries).values(entry).returning({ id: diaryEntries.id });
+  return result[0];
+}
+
+export async function updateDiaryEntry(id: number, userId: number, content: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.update(diaryEntries)
+    .set({ content })
+    .where(and(eq(diaryEntries.id, id), eq(diaryEntries.userId, userId)))
+    .returning({ id: diaryEntries.id });
+
+  return { affectedRows: result.length };
+}
+
+export async function deleteDiaryEntry(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.delete(diaryEntries)
+    .where(and(eq(diaryEntries.id, id), eq(diaryEntries.userId, userId)))
+    .returning({ id: diaryEntries.id });
+
+  return { affectedRows: result.length };
+}
+
+/** Uma anotação na linha do tempo, venha ela de onde vier. */
+export type DiaryTimelineItem = {
+  id: string;
+  source: "diary" | "mood" | "symptom" | "routine" | "exercise";
+  date: Date;
+  content: string;
+  /** Contexto curto da origem, ex. "Humor 4/10" — vazio no diário avulso. */
+  context: string;
+  /** Tela de onde a anotação veio, para o item levar de volta a ela. */
+  route: string;
+};
+
+const SYMPTOM_LABELS_DIARIO: Record<string, string> = {
+  social_interaction: "Interação Social",
+  communication: "Comunicação",
+  repetitive_behavior: "Comportamento Repetitivo",
+  sensory_sensitivity: "Sensibilidade Sensorial",
+  focus: "Foco e Atenção",
+  executive_function: "Função Executiva",
+};
+
+/**
+ * Linha do tempo do diário.
+ *
+ * O app tem campo de anotação em humor, sintomas, rotinas e exercícios, e
+ * cada um só aparecia dentro do seu próprio card, na sua própria tela.
+ * Escrever "hoje foi difícil por causa do barulho na rua" e reencontrar
+ * isso um mês depois era impossível. Aqui as cinco fontes viram uma lista
+ * só, em ordem cronológica, com busca.
+ *
+ * O filtro de texto é feito em memória porque as anotações vêm de cinco
+ * tabelas diferentes; o volume é o de uma pessoa, não de uma base.
+ */
+export async function getDiaryTimeline(
+  userId: number,
+  filtros: { days?: number; search?: string; sources?: DiaryTimelineItem["source"][] } = {}
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const inicio = filtros.days != null ? new Date() : null;
+  if (inicio) inicio.setDate(inicio.getDate() - filtros.days!);
+
+  const noPeriodo = <T extends { date: Date }>(linhas: T[]) =>
+    inicio ? linhas.filter((l) => new Date(l.date) >= inicio) : linhas;
+
+  const itens: DiaryTimelineItem[] = [];
+
+  const avulsas = await db.select().from(diaryEntries).where(eq(diaryEntries.userId, userId));
+  for (const e of noPeriodo(avulsas)) {
+    itens.push({
+      id: `diary-${e.id}`,
+      source: "diary",
+      date: new Date(e.date),
+      content: e.content,
+      context: "",
+      route: "/diary",
+    });
+  }
+
+  const humor = await db.select().from(moodEntries).where(eq(moodEntries.userId, userId));
+  for (const e of noPeriodo(humor)) {
+    if (!e.notes) continue;
+    itens.push({
+      id: `mood-${e.id}`,
+      source: "mood",
+      date: new Date(e.date),
+      content: e.notes,
+      context: `Humor ${e.moodLevel}/10, ansiedade ${e.anxietyLevel}/10`,
+      route: "/mood",
+    });
+  }
+
+  const sintomas = await db.select().from(symptomEntries).where(eq(symptomEntries.userId, userId));
+  for (const e of noPeriodo(sintomas)) {
+    if (!e.notes) continue;
+    itens.push({
+      id: `symptom-${e.id}`,
+      source: "symptom",
+      date: new Date(e.date),
+      content: e.notes,
+      context: `${SYMPTOM_LABELS_DIARIO[e.symptomType] ?? e.symptomType}, severidade ${e.severity}/10`,
+      route: "/symptoms",
+    });
+  }
+
+  const rotinas = await db.select().from(routineEntries)
+    .innerJoin(routines, eq(routineEntries.routineId, routines.id))
+    .where(eq(routineEntries.userId, userId));
+  for (const linha of rotinas) {
+    const e = linha.routine_entries;
+    if (!e.notes) continue;
+    if (inicio && new Date(e.date) < inicio) continue;
+    itens.push({
+      id: `routine-${e.id}`,
+      source: "routine",
+      date: new Date(e.date),
+      content: e.notes,
+      context: linha.routines.title,
+      route: "/routines",
+    });
+  }
+
+  const exercicios = await db.select().from(exerciseSessions)
+    .where(eq(exerciseSessions.userId, userId));
+  for (const e of exercicios) {
+    if (!e.notes) continue;
+    if (inicio && new Date(e.startedAt) < inicio) continue;
+    itens.push({
+      id: `exercise-${e.id}`,
+      source: "exercise",
+      date: new Date(e.startedAt),
+      content: e.notes,
+      context: e.rating != null ? `Respiração ${e.pattern ?? ""} — avaliada ${e.rating}/10`.trim() : `Respiração ${e.pattern ?? ""}`.trim(),
+      route: "/breathing",
+    });
+  }
+
+  const fontes = filtros.sources;
+  const busca = filtros.search?.trim().toLowerCase();
+
+  return itens
+    .filter((i) => (fontes && fontes.length > 0 ? fontes.includes(i.source) : true))
+    .filter((i) =>
+      busca ? i.content.toLowerCase().includes(busca) || i.context.toLowerCase().includes(busca) : true
+    )
+    .sort((a, b) => b.date.getTime() - a.date.getTime());
 }
