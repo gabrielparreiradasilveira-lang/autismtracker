@@ -9,7 +9,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import * as gamification from "./gamification";
-import { generateInsights } from "./insights";
+import { generateInsights, INSIGHT_LABELS } from "./insights";
 import * as notifications from "./notifications";
 import { indexarGatilhos, normalizarGatilho } from "./triggerMatching";
 import * as crisis from "./crisis";
@@ -545,6 +545,62 @@ export const appRouter = router({
      * impacto sem mostrar a estratégia que a própria pessoa já tinha
      * escrito para ele, em outra tela.
      */
+    /**
+     * Quanto dado existe e o que ele libera.
+     *
+     * O `missing` dos insights já dizia, item a item, o que falta — mas
+     * aparecia solto dentro de cada tela. Reunido aqui, responde de uma
+     * vez "quanto eu já registrei" e "o que ainda não dá para analisar",
+     * que é a pergunta de quem abre as Análises e vê pouca coisa.
+     */
+    dataCoverage: protectedProcedure
+      .input(z.object({ timezoneOffsetMinutes: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const userId = ctx.user.id;
+
+        const [humor, sintomas, gatilhos, rotinas, exercicios, tecnicas, diario, insights] =
+          await Promise.all([
+            db.getMoodEntriesByUser(userId),
+            db.getSymptomEntriesByUser(userId),
+            db.getSensoryTriggersByUser(userId),
+            db.getRoutinesByUser(userId),
+            db.getExerciseSessionsByUser(userId),
+            db.getTechniqueAnalytics(userId),
+            db.getDiaryTimeline(userId, { sources: ["diary"] }),
+            generateInsights(userId, input.timezoneOffsetMinutes),
+          ]);
+
+        const sources = [
+          { id: "mood", label: "Registros de humor", count: humor.length, route: "/mood" },
+          { id: "symptom", label: "Registros de sintoma", count: sintomas.length, route: "/symptoms" },
+          { id: "trigger", label: "Gatilhos cadastrados", count: gatilhos.length, route: "/triggers" },
+          { id: "routine", label: "Rotinas criadas", count: rotinas.length, route: "/routines" },
+          { id: "exercise", label: "Sessões de respiração", count: exercicios.length, route: "/breathing" },
+          { id: "technique", label: "Técnicas usadas", count: tecnicas.totalTechniquesUsed, route: "/techniques" },
+          { id: "diary", label: "Anotações no diário", count: diario.length, route: "/diary" },
+        ];
+
+        const nome = (id: string) => INSIGHT_LABELS[id] ?? id;
+
+        return {
+          sources,
+          totalRecords: sources.reduce((soma, s) => soma + s.count, 0),
+          analyses: {
+            total: insights.insights.length + insights.missing.length,
+            available: insights.insights.map((i) => ({
+              id: i.id,
+              label: nome(i.id),
+              sampleSize: i.sampleSize,
+            })),
+            locked: insights.missing.map((m) => ({
+              id: m.id,
+              label: nome(m.id),
+              missing: m.missing,
+            })),
+          },
+        };
+      }),
+
     /** Humor médio por período do dia, no relógio do usuário. */
     byTimeOfDay: protectedProcedure
       .input(z.object({

@@ -195,3 +195,54 @@ describe("diary — edição e remoção", () => {
     await expect(publicCaller.diary.create({ content: "x" })).rejects.toThrow();
   });
 });
+
+describe("analytics.dataCoverage", () => {
+  it("sem nenhum registro, tudo zerado e nenhuma análise disponível", async () => {
+    const caller = appRouter.createCaller(createAuthContext(1201));
+
+    const cobertura = await caller.analytics.dataCoverage({ timezoneOffsetMinutes: 0 });
+
+    expect(cobertura.totalRecords).toBe(0);
+    expect(cobertura.analyses.available).toEqual([]);
+    expect(cobertura.analyses.locked.length).toBe(cobertura.analyses.total);
+    // Cada bloqueio diz o que falta, com nome legível.
+    for (const bloqueada of cobertura.analyses.locked) {
+      expect(bloqueada.label).not.toBe(bloqueada.id);
+      expect(bloqueada.missing.length).toBeGreaterThan(20);
+    }
+  });
+
+  it("conta cada fonte e move a análise para disponível quando ela abre", async () => {
+    const caller = appRouter.createCaller(createAuthContext(1202));
+
+    for (const severity of [9, 8, 7]) {
+      await caller.symptoms.create({ symptomType: "focus", severity, triggers: ["barulho alto"] });
+    }
+    await caller.diary.create({ content: "uma anotação" });
+
+    const cobertura = await caller.analytics.dataCoverage({ timezoneOffsetMinutes: 0 });
+
+    const sintomas = cobertura.sources.find((s) => s.id === "symptom")!;
+    const diario = cobertura.sources.find((s) => s.id === "diary")!;
+    expect(sintomas.count).toBe(3);
+    expect(diario.count).toBe(1);
+    expect(cobertura.totalRecords).toBe(4);
+
+    const disponivel = cobertura.analyses.available.find((a) => a.id === "trigger-symptom");
+    expect(disponivel).toBeDefined();
+    expect(disponivel!.label).toBe("Gatilho × severidade do sintoma");
+    expect(cobertura.analyses.locked.find((a) => a.id === "trigger-symptom")).toBeUndefined();
+  });
+
+  it("exige autenticação", async () => {
+    const publicCaller = appRouter.createCaller({
+      user: null,
+      req: { protocol: "https", headers: {} } as TrpcContext["req"],
+      res: {} as TrpcContext["res"],
+    });
+
+    await expect(
+      publicCaller.analytics.dataCoverage({ timezoneOffsetMinutes: 0 })
+    ).rejects.toThrow();
+  });
+});

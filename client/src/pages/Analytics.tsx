@@ -1,6 +1,7 @@
 import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
 import PageLoader from "@/components/PageLoader";
 import InsightSection from "@/components/InsightSection";
+import DataCoveragePanel from "@/components/DataCoveragePanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, ArrowLeft, TrendingUp, TrendingDown, Minus } from "lucide-react";
@@ -205,7 +206,13 @@ export default function Analytics() {
 
         {/* Insights vêm primeiro: o número sozinho não diz o que fazer. */}
         <div className="mb-8">
-          <InsightSection />
+          <InsightSection showMissing={false} />
+        </div>
+
+        {/* Quanto dado existe e o que ele libera. Fica antes dos gráficos
+            porque é o que responde "por que estou vendo pouca coisa". */}
+        <div className="mb-8">
+          <DataCoveragePanel />
         </div>
 
         {patternsQuery.isLoading ? (

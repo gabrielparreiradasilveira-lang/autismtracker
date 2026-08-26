@@ -12,7 +12,15 @@ import { fusoDoUsuario } from "@/lib/timezone";
  * exatamente o que falta em números, em vez de um conselho genérico que
  * serviria para qualquer pessoa.
  */
-export default function InsightSection({ title = "O que seus dados mostram" }: { title?: string }) {
+export default function InsightSection({
+  title = "O que seus dados mostram",
+  // Na tela de Análises o que falta é mostrado pelo painel de cobertura,
+  // com muito mais detalhe; repetir aqui seria a mesma lista duas vezes.
+  showMissing = true,
+}: {
+  title?: string;
+  showMissing?: boolean;
+}) {
   const query = trpc.analytics.insights.useQuery({ timezoneOffsetMinutes: fusoDoUsuario() });
 
   if (query.isLoading) {
@@ -28,7 +36,7 @@ export default function InsightSection({ title = "O que seus dados mostram" }: {
   const insights = query.data?.insights ?? [];
   const missing = query.data?.missing ?? [];
 
-  if (insights.length === 0 && missing.length === 0) return null;
+  if (insights.length === 0 && (!showMissing || missing.length === 0)) return null;
 
   return (
     <section className="space-y-4" aria-labelledby="insights-heading">
@@ -59,7 +67,7 @@ export default function InsightSection({ title = "O que seus dados mostram" }: {
         </Card>
       ))}
 
-      {missing.length > 0 && (
+      {showMissing && missing.length > 0 && (
         <Card className="bg-gray-50">
           <CardContent className="pt-6">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">

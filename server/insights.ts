@@ -30,6 +30,22 @@ export type Insight = {
   sampleSize: number;
 };
 
+/**
+ * Nome legível de cada análise, para o painel de cobertura de dados
+ * poder dizer o que está e o que não está disponível. As chaves são os
+ * mesmos ids que os geradores devolvem.
+ */
+export const INSIGHT_LABELS: Record<string, string> = {
+  "routine-mood": "Rotina × humor",
+  "symptom-weekday": "Sintomas por dia da semana",
+  "intervention-symptom": "O que funciona para cada sintoma",
+  "trigger-symptom": "Gatilho × severidade do sintoma",
+  "technique-effectiveness": "Técnica mais bem avaliada",
+  "symptom-duration": "Duração típica dos episódios",
+  "breathing-effectiveness": "Padrão de respiração mais eficaz",
+  "mood-time-of-day": "Humor por período do dia",
+};
+
 export type MissingData = {
   id: string;
   missing: string;
