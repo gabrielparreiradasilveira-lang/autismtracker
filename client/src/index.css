@@ -87,3 +87,28 @@ html.reduce-motion *::after {
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
 }
+
+/*
+ * Impressão do relatório para o profissional.
+ *
+ * Fora de @layer pelo mesmo motivo das regras acima: o conteúdo de uma
+ * @layer é purgado conforme as classes encontradas na varredura, e
+ * .nao-imprimir não é utilidade do Tailwind.
+ */
+@media print {
+  .nao-imprimir {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
+
+  /* Cartão impresso é papel, não interface: sem sombra e com borda fina
+     para o recorte ficar legível em preto e branco. */
+  .imprimivel .rounded-lg.border {
+    box-shadow: none !important;
+    border: 1px solid #d1d5db !important;
+    break-inside: avoid;
+  }
+}

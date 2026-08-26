@@ -25,6 +25,7 @@ import PresetMessages from "./pages/PresetMessages";
 import TechniqueLibrary from "./pages/TechniqueLibrary";
 import Symptoms from "./pages/Symptoms";
 import Diary from "./pages/Diary";
+import Report from "./pages/Report";
 import SOSButton from "./components/SOSButton";
 import ConnectionGate from "./components/ConnectionGate";
 import SignIn from "./pages/SignIn";
@@ -39,6 +40,7 @@ function Router() {
       <Route path={"/dashboard"} component={Dashboard} />
       <Route path={"/mood"} component={Mood} />
       <Route path={"/diary"} component={Diary} />
+      <Route path={"/report"} component={Report} />
       <Route path={"/triggers"} component={Triggers} />
       <Route path={"/routines"} component={Routines} />
       <Route path={"/breathing"} component={Breathing} />

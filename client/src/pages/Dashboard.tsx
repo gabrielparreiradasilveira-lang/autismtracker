@@ -2,7 +2,7 @@ import { useRequireAuth } from "@/_core/hooks/useRequireAuth";
 import PageLoader from "@/components/PageLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Heart, Brain, Calendar, Shield, Activity, Settings, LogOut, BarChart3, GitBranch, Sparkles, Bell, Trophy, Users, MessageSquare, Wind, ClipboardList, Flame, Star, BookOpen } from "lucide-react";
+import { Heart, Brain, Calendar, Shield, Activity, Settings, LogOut, BarChart3, GitBranch, Sparkles, Bell, Trophy, Users, MessageSquare, Wind, ClipboardList, Flame, Star, BookOpen, FileText } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 
@@ -135,6 +135,22 @@ export default function Dashboard() {
               <CardContent>
                 <p className="text-sm text-gray-600">
                   Registre como você está se sentindo hoje
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/report">
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow border-2 border-transparent hover:border-teal-200">
+              <CardHeader>
+                <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center mb-2">
+                  <FileText className="w-6 h-6 text-teal-600" />
+                </div>
+                <CardTitle className="text-lg">Relatório</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-600">
+                  Resumo do período para levar ao profissional
                 </p>
               </CardContent>
             </Card>

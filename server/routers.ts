@@ -797,6 +797,120 @@ export const appRouter = router({
       }),
   }),
 
+  /**
+   * Relatório para levar ao profissional.
+   *
+   * Reúne num documento só o que as telas já mostram separadamente, para
+   * um período declarado. Não calcula nada novo: reaproveita as mesmas
+   * funções das análises, para o relatório nunca discordar da tela.
+   *
+   * O que o relatório NÃO faz é tão importante quanto o que ele faz: não
+   * há diagnóstico, não há classificação de gravidade clínica, e todos os
+   * números vêm com o tamanho da amostra ao lado — a tela de impressão
+   * declara isso em texto, porque quem vai ler é um profissional que não
+   * acompanhou como o dado foi coletado.
+   */
+  report: router({
+    summary: protectedProcedure
+      .input(z.object({
+        days: z.number().int().min(7).max(365).default(90),
+        timezoneOffsetMinutes: z.number(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const userId = ctx.user.id;
+        const fuso = input.timezoneOffsetMinutes;
+        const inicio = new Date();
+        inicio.setDate(inicio.getDate() - input.days);
+
+        const [
+          humor,
+          sintomas,
+          sintomasAnalytics,
+          rotinaHumor,
+          sintomaHumor,
+          porPeriodo,
+          exercicios,
+          tecnicas,
+          gatilhos,
+          insights,
+        ] = await Promise.all([
+          db.getMoodEntriesByUser(userId, inicio),
+          db.getSymptomEntriesByUser(userId, { days: input.days }),
+          db.getSymptomAnalytics(userId, fuso, input.days),
+          db.getRoutineMoodCorrelations(userId, fuso),
+          db.getSymptomMoodCorrelation(userId, fuso, input.days),
+          db.getMoodByTimeOfDay(userId, fuso, input.days),
+          db.getExerciseAnalytics(userId),
+          db.getTechniqueAnalytics(userId),
+          db.getSensoryTriggersByUser(userId),
+          generateInsights(userId, fuso),
+        ]);
+
+        const media = (valores: number[]) =>
+          valores.length > 0
+            ? Math.round((valores.reduce((s, v) => s + v, 0) / valores.length) * 10) / 10
+            : null;
+
+        const niveisDeHumor = humor.map((e) => e.moodLevel);
+        const mediaHumor = media(niveisDeHumor);
+        // Desvio-padrão: sem ele, uma média de 5 esconde a diferença
+        // entre "sempre 5" e "alterna entre 1 e 9".
+        const variabilidade =
+          mediaHumor != null && niveisDeHumor.length > 1
+            ? Math.round(
+                Math.sqrt(
+                  niveisDeHumor.reduce((s, v) => s + (v - mediaHumor) ** 2, 0) /
+                    niveisDeHumor.length
+                ) * 10
+              ) / 10
+            : null;
+
+        return {
+          period: {
+            days: input.days,
+            from: inicio,
+            to: new Date(),
+            generatedAt: new Date(),
+          },
+          user: { name: ctx.user.name, email: ctx.user.email },
+          counts: {
+            mood: humor.length,
+            symptoms: sintomas.length,
+            exercises: exercicios.totalSessions,
+            techniques: tecnicas.totalTechniquesUsed,
+            triggers: gatilhos.length,
+          },
+          mood: {
+            average: mediaHumor,
+            anxiety: media(humor.map((e) => e.anxietyLevel)),
+            stress: media(humor.map((e) => e.stressLevel)),
+            energy: media(humor.map((e) => e.energyLevel)),
+            variability: variabilidade,
+            sampleSize: humor.length,
+            byTimeOfDay: porPeriodo.byTimeOfDay,
+          },
+          symptoms: {
+            averageSeverityByType: sintomasAnalytics.averageSeverityByType,
+            durationBySymptomType: sintomasAnalytics.durationBySymptomType,
+            effectivenessBySymptomType: sintomasAnalytics.effectivenessBySymptomType,
+            topTriggers: sintomasAnalytics.topTriggers,
+            moodCorrelation: sintomaHumor,
+          },
+          routines: rotinaHumor,
+          breathing: exercicios,
+          techniques: tecnicas.mostEffective,
+          registeredTriggers: gatilhos.map((g) => ({
+            name: g.name,
+            category: g.category,
+            severity: g.severity,
+            copingStrategy: g.copingStrategy,
+            lastOccurred: g.lastOccurred,
+          })),
+          insights: insights.insights,
+        };
+      }),
+  }),
+
   reminders: router({
     create: protectedProcedure
       .input(z.object({

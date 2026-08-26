@@ -312,6 +312,21 @@ export default function Export() {
             <h1 className="text-3xl font-bold text-gray-900">Exportar Dados</h1>
           </div>
           <p className="text-gray-600">Compartilhe seus dados com profissionais de saúde</p>
+
+          {/* Quem chega aqui costuma querer levar os dados a uma consulta.
+              O arquivo bruto serve para guardar; o relatório serve para ler. */}
+          <div className="mt-4 p-4 bg-teal-50 border border-teal-200 rounded-lg">
+            <p className="text-sm text-teal-900">
+              Se o objetivo é levar a uma consulta, o{" "}
+              <Link href="/report">
+                <span className="underline cursor-pointer font-medium">
+                  relatório de acompanhamento
+                </span>
+              </Link>{" "}
+              resume o período em um documento imprimível, com os números já interpretados e
+              seus limites declarados. Os arquivos abaixo exportam os dados brutos.
+            </p>
+          </div>
         </div>
 
         <div className="space-y-6">
