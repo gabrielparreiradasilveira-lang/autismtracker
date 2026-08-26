@@ -88,7 +88,7 @@ describe("reminders", () => {
     const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
-    const suggestions = await caller.reminders.getSmartSuggestions();
+    const suggestions = await caller.reminders.getSmartSuggestions({ timezoneOffsetMinutes: 0 });
     
     expect(suggestions).toHaveProperty("hasSufficientData");
     expect(suggestions).toHaveProperty("message");

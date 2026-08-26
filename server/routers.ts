@@ -622,9 +622,11 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    getSmartSuggestions: protectedProcedure.query(async ({ ctx }) => {
-      return await db.getSmartReminderSuggestions(ctx.user.id);
-    }),
+    getSmartSuggestions: protectedProcedure
+      .input(z.object({ timezoneOffsetMinutes: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await db.getSmartReminderSuggestions(ctx.user.id, input.timezoneOffsetMinutes);
+      }),
   }),
 
   routineAnalytics: router({

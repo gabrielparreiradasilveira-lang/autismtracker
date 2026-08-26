@@ -412,7 +412,15 @@ export async function recordReminderResponse(id: number, userId: number, respons
     .where(eq(reminders.id, id));
 }
 
-export async function getSmartReminderSuggestions(userId: number) {
+/**
+ * Sugere horários de lembrete a partir das horas em que a pessoa costuma
+ * registrar humor.
+ *
+ * A hora tem que ser lida no relógio dela: com `getHours()` do servidor,
+ * que no Railway roda em UTC, quem registrava às 20h no Brasil recebia a
+ * sugestão de lembrete para as 23h.
+ */
+export async function getSmartReminderSuggestions(userId: number, timezoneOffsetMinutes: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -433,7 +441,7 @@ export async function getSmartReminderSuggestions(userId: number) {
   // Analyze most common hours for mood entries
   const hourCounts: Record<number, number> = {};
   entries.forEach(entry => {
-    const hour = new Date(entry.date).getHours();
+    const hour = toUserWallClock(timezoneOffsetMinutes, new Date(entry.date)).getUTCHours();
     hourCounts[hour] = (hourCounts[hour] || 0) + 1;
   });
 

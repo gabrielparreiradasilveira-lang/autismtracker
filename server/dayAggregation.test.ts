@@ -155,3 +155,25 @@ describe("fronteira de dia no fuso do usuário", () => {
     );
   });
 });
+
+describe("sugestão de horário de lembrete", () => {
+  it("usa a hora do relógio do usuário, não a do servidor", async () => {
+    const userId = 705;
+
+    // Sete registros às 23h UTC — 20h para quem está em UTC-3.
+    for (let i = 1; i <= 7; i++) {
+      const instante = new Date();
+      instante.setUTCDate(instante.getUTCDate() - i);
+      instante.setUTCHours(23, 0, 0, 0);
+      await registrarHumor(userId, instante, 6);
+    }
+
+    const noFusoDoBrasil = await db.getSmartReminderSuggestions(userId, 180);
+    const noFusoDoServidor = await db.getSmartReminderSuggestions(userId, 0);
+
+    expect(noFusoDoBrasil.hasSufficientData).toBe(true);
+    expect(noFusoDoBrasil.suggestions[0].time).toBe("20:00");
+    // Era isto que a pessoa recebia antes: o horário do servidor.
+    expect(noFusoDoServidor.suggestions[0].time).toBe("23:00");
+  });
+});

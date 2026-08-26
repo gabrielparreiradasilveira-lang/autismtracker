@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Bell, ArrowLeft, Plus, Trash2, Sparkles, Clock } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { fusoDoUsuario } from "@/lib/timezone";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -24,7 +25,7 @@ export default function Reminders() {
   const [isSmart, setIsSmart] = useState(false);
 
   const remindersQuery = trpc.reminders.list.useQuery();
-  const smartSuggestionsQuery = trpc.reminders.getSmartSuggestions.useQuery();
+  const smartSuggestionsQuery = trpc.reminders.getSmartSuggestions.useQuery({ timezoneOffsetMinutes: fusoDoUsuario() });
 
   const createMutation = trpc.reminders.create.useMutation({
     onSuccess: () => {
