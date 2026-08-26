@@ -11,6 +11,7 @@ import * as db from "./db";
 import * as gamification from "./gamification";
 import { generateInsights } from "./insights";
 import * as notifications from "./notifications";
+import { indexarGatilhos, normalizarGatilho } from "./triggerMatching";
 import * as crisis from "./crisis";
 
 /**
@@ -404,46 +405,99 @@ export const appRouter = router({
         return await generateInsights(ctx.user.id, input.timezoneOffsetMinutes);
       }),
 
-    patterns: protectedProcedure.query(async ({ ctx }) => {
-      const moodEntries = await db.getMoodEntriesByUser(ctx.user.id);
-      const triggers = await db.getSensoryTriggersByUser(ctx.user.id);
-      
-      // Calculate averages
-      const avgMood = moodEntries.length > 0
-        ? moodEntries.reduce((sum, e) => sum + e.moodLevel, 0) / moodEntries.length
-        : 0;
-      const avgAnxiety = moodEntries.length > 0
-        ? moodEntries.reduce((sum, e) => sum + e.anxietyLevel, 0) / moodEntries.length
-        : 0;
-      const avgStress = moodEntries.length > 0
-        ? moodEntries.reduce((sum, e) => sum + e.stressLevel, 0) / moodEntries.length
-        : 0;
-      const avgEnergy = moodEntries.length > 0
-        ? moodEntries.reduce((sum, e) => sum + e.energyLevel, 0) / moodEntries.length
-        : 0;
+    /**
+     * Padrões de humor e de gatilhos num período.
+     *
+     * Duas coisas mudaram em relação à versão anterior:
+     *
+     * - `triggerFrequency` contava o CADASTRO por categoria. Quem tinha
+     *   cinco gatilhos de som cadastrados e nunca registrou nenhum lia
+     *   "Som: 5" num gráfico chamado "frequência". Agora conta ocorrência
+     *   de verdade, nos registros de humor e de sintoma, e usa o cadastro
+     *   só para descobrir a categoria de cada nome.
+     * - `byDayOfWeek` devolvia os registros crus. Agora devolve a média
+     *   por dia da semana, no fuso do usuário, com o tamanho da amostra
+     *   junto — sem contagem, uma média não diz nada.
+     */
+    patterns: protectedProcedure
+      .input(z.object({
+        days: z.number().int().min(7).max(365).default(30),
+        timezoneOffsetMinutes: z.number(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const inicio = new Date();
+        inicio.setDate(inicio.getDate() - input.days);
 
-      // Group by day of week
-      const byDayOfWeek = moodEntries.reduce((acc, entry) => {
-        const day = new Date(entry.date).getDay();
-        if (!acc[day]) acc[day] = [];
-        acc[day].push(entry);
-        return acc;
-      }, {} as Record<number, typeof moodEntries>);
+        const moodEntries = await db.getMoodEntriesByUser(ctx.user.id, inicio);
+        const symptomEntries = await db.getSymptomEntriesByUser(ctx.user.id, {
+          days: input.days,
+        });
+        const cadastrados = await db.getSensoryTriggersByUser(ctx.user.id);
 
-      // Trigger frequency
-      const triggerFrequency = triggers.reduce((acc, trigger) => {
-        acc[trigger.category] = (acc[trigger.category] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+        const media = (valores: number[]) =>
+          valores.length > 0 ? valores.reduce((s, v) => s + v, 0) / valores.length : 0;
 
-      return {
-        averages: { mood: avgMood, anxiety: avgAnxiety, stress: avgStress, energy: avgEnergy },
-        byDayOfWeek,
-        triggerFrequency,
-        totalEntries: moodEntries.length,
-        totalTriggers: triggers.length,
-      };
-    }),
+        const averages = {
+          mood: media(moodEntries.map((e) => e.moodLevel)),
+          anxiety: media(moodEntries.map((e) => e.anxietyLevel)),
+          stress: media(moodEntries.map((e) => e.stressLevel)),
+          energy: media(moodEntries.map((e) => e.energyLevel)),
+        };
+
+        // Média de humor por dia da semana, com amostra.
+        const porDiaDaSemana: Record<number, { soma: number; contagem: number }> = {};
+        for (const entry of moodEntries) {
+          const dia = db
+            .toUserWallClock(input.timezoneOffsetMinutes, new Date(entry.date))
+            .getUTCDay();
+          if (!porDiaDaSemana[dia]) porDiaDaSemana[dia] = { soma: 0, contagem: 0 };
+          porDiaDaSemana[dia].soma += entry.moodLevel;
+          porDiaDaSemana[dia].contagem++;
+        }
+        const byWeekday = Object.entries(porDiaDaSemana)
+          .map(([weekday, d]) => ({
+            weekday: Number(weekday),
+            averageMood: Math.round((d.soma / d.contagem) * 10) / 10,
+            count: d.contagem,
+          }))
+          .sort((a, b) => a.weekday - b.weekday);
+
+        // Ocorrências de gatilho, classificadas pela categoria do cadastro.
+        const indice = indexarGatilhos(cadastrados);
+        const triggerFrequency: Record<string, number> = {};
+        const semCadastro = new Set<string>();
+        let triggerOccurrences = 0;
+
+        const contarGatilhos = (nomes: string[] | null | undefined) => {
+          for (const nome of nomes || []) {
+            const cadastrado = indice.get(normalizarGatilho(nome));
+            // Sem cadastro não há categoria: o gatilho existe e conta,
+            // mas fica em "other" até a pessoa cadastrá-lo.
+            const categoria = cadastrado?.category ?? "other";
+            triggerFrequency[categoria] = (triggerFrequency[categoria] || 0) + 1;
+            triggerOccurrences++;
+            if (!cadastrado) semCadastro.add(nome.trim());
+          }
+        };
+
+        for (const entry of moodEntries) contarGatilhos(entry.triggers);
+        for (const entry of symptomEntries) contarGatilhos(entry.triggers);
+
+        return {
+          days: input.days,
+          averages,
+          byWeekday,
+          triggerFrequency,
+          triggerOccurrences,
+          // Nomes que aparecem nos registros e não existem no cadastro:
+          // cadastrá-los é o que permite classificar por categoria e
+          // guardar uma estratégia de enfrentamento.
+          triggersSemCadastro: [...semCadastro],
+          totalEntries: moodEntries.length,
+          totalSymptomEntries: symptomEntries.length,
+          totalTriggers: cadastrados.length,
+        };
+      }),
 
     correlations: protectedProcedure.query(async ({ ctx }) => {
       const moodEntries = await db.getMoodEntriesByUser(ctx.user.id);

@@ -34,10 +34,21 @@ ChartJS.register(
   Filler
 );
 
+/** Mesmos rótulos usados na tela de Gatilhos. */
+const categoriaDeGatilho: Record<string, string> = {
+  sound: "Som",
+  light: "Luz",
+  texture: "Textura",
+  smell: "Cheiro",
+  taste: "Sabor",
+  visual: "Visual",
+  other: "Outro / sem cadastro",
+};
+
 export default function Analytics() {
   const { user, isAuthenticated, loading } = useRequireAuth();
   
-  const patternsQuery = trpc.analytics.patterns.useQuery();
+  const patternsQuery = trpc.analytics.patterns.useQuery({ days: 30, timezoneOffsetMinutes: fusoDoUsuario() });
   const trendsQuery = trpc.analytics.trends.useQuery({ days: 30 });
   const symptomAnalyticsQuery = trpc.symptoms.getAnalytics.useQuery({ days: 30, timezoneOffsetMinutes: fusoDoUsuario() });
   const techniqueAnalyticsQuery = trpc.techniques.getAnalytics.useQuery();
@@ -89,12 +100,15 @@ export default function Analytics() {
     ],
   };
 
-  // Prepare chart data for trigger frequency
+  // Frequência de gatilhos: agora são ocorrências registradas, não
+  // quantos gatilhos existem cadastrados em cada categoria.
   const triggerChartData = {
-    labels: Object.keys(patterns?.triggerFrequency || {}),
+    labels: Object.keys(patterns?.triggerFrequency || {}).map(
+      (categoria) => categoriaDeGatilho[categoria] || categoria
+    ),
     datasets: [
       {
-        label: "Frequência de Gatilhos",
+        label: "Ocorrências registradas",
         data: Object.values(patterns?.triggerFrequency || {}),
         backgroundColor: [
           "rgba(147, 51, 234, 0.7)",
@@ -252,6 +266,11 @@ export default function Analytics() {
               </Card>
             </div>
 
+            <p className="text-sm text-gray-600">
+              Médias dos últimos {patterns.days} dias, sobre{" "}
+              {plural(patterns.totalEntries, "registro", "registros")} de humor.
+            </p>
+
             {/* Trend Chart */}
             {trends && trends.entries.length > 0 && (
               <Card>
@@ -270,12 +289,26 @@ export default function Analytics() {
             {Object.keys(patterns.triggerFrequency).length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Frequência de Gatilhos por Categoria</CardTitle>
+                  <CardTitle>Ocorrências de Gatilhos por Categoria</CardTitle>
+                  <p className="text-sm text-gray-600">
+                    Quantas vezes cada categoria apareceu nos seus registros de humor e de
+                    sintoma nos últimos {patterns.days} dias — não quantos gatilhos você
+                    tem cadastrados.
+                  </p>
                 </CardHeader>
                 <CardContent>
                   <div className="h-80">
                     <Bar data={triggerChartData} options={barChartOptions} />
                   </div>
+                  {patterns.triggersSemCadastro.length > 0 && (
+                    <p className="text-sm text-gray-700 mt-4 p-3 bg-gray-50 rounded-lg">
+                      Estes gatilhos aparecem nos seus registros e ainda não estão
+                      cadastrados, por isso contam como "Outro / sem cadastro":{" "}
+                      {patterns.triggersSemCadastro.join(", ")}. Cadastrá-los permite
+                      classificá-los por categoria e guardar uma estratégia de enfrentamento
+                      para cada um.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -292,11 +325,15 @@ export default function Analytics() {
                     <span className="font-semibold">{patterns.totalEntries}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Total de Gatilhos Registrados</span>
+                    <span className="text-sm text-gray-600">Gatilhos Cadastrados</span>
                     <span className="font-semibold">{patterns.totalTriggers}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Categorias de Gatilhos</span>
+                    <span className="text-sm text-gray-600">Ocorrências de Gatilhos</span>
+                    <span className="font-semibold">{patterns.triggerOccurrences}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Categorias com Ocorrência</span>
                     <span className="font-semibold">{Object.keys(patterns.triggerFrequency).length}</span>
                   </div>
                 </CardContent>
