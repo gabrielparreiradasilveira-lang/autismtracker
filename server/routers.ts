@@ -461,6 +461,11 @@ export const appRouter = router({
         inicio.setDate(inicio.getDate() - input.days);
 
         const moodEntries = await db.getMoodEntriesByUser(ctx.user.id, inicio);
+        // Contagem sem filtro de período: a tela usa isto para decidir se
+        // tem o que mostrar. Com o total do período nesse papel, quem não
+        // registrou nada nos últimos 30 dias perdia a tela inteira e lia
+        // "você ainda não tem registros", que era falso.
+        const moodEntriesAllTime = await db.getMoodEntriesByUser(ctx.user.id);
         const symptomEntries = await db.getSymptomEntriesByUser(ctx.user.id, {
           days: input.days,
         });
@@ -526,6 +531,7 @@ export const appRouter = router({
           // guardar uma estratégia de enfrentamento.
           triggersSemCadastro: [...semCadastro],
           totalEntries: moodEntries.length,
+          totalEntriesAllTime: moodEntriesAllTime.length,
           totalSymptomEntries: symptomEntries.length,
           totalTriggers: cadastrados.length,
         };

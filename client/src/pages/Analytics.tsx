@@ -246,7 +246,7 @@ export default function Analytics() {
               <p className="text-sm text-gray-600">Carregando análises...</p>
             </CardContent>
           </Card>
-        ) : patterns && patterns.totalEntries > 0 ? (
+        ) : patterns && patterns.totalEntriesAllTime > 0 ? (
           <div className="space-y-6">
             {/* Averages */}
             <div className="grid md:grid-cols-4 gap-4">
@@ -299,10 +299,24 @@ export default function Analytics() {
               </Card>
             </div>
 
-            <p className="text-sm text-gray-600">
-              Médias dos últimos {patterns.days} dias, sobre{" "}
-              {plural(patterns.totalEntries, "registro", "registros")} de humor.
-            </p>
+            {patterns.totalEntries === 0 ? (
+              // Há histórico, só não neste período. Antes isso caía no
+              // estado vazio que afirmava não haver registro nenhum.
+              <Card className="bg-amber-50 border-amber-200">
+                <CardContent className="pt-6">
+                  <p className="text-sm text-amber-900">
+                    Nenhum registro de humor nos últimos {patterns.days} dias. Você tem{" "}
+                    {plural(patterns.totalEntriesAllTime, "registro", "registros")} no total —
+                    escolha um período maior acima para vê-los.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <p className="text-sm text-gray-600">
+                Médias dos últimos {patterns.days} dias, sobre{" "}
+                {plural(patterns.totalEntries, "registro", "registros")} de humor.
+              </p>
+            )}
 
             {/* Humor por período do dia */}
             {(byTimeOfDayQuery.data?.byTimeOfDay.length ?? 0) > 0 && (
@@ -347,7 +361,7 @@ export default function Analytics() {
             )}
 
             {/* Trigger Frequency */}
-            {Object.keys(patterns.triggerFrequency).length > 0 && (
+            {(patterns.triggerOccurrences > 0 || patterns.totalTriggers > 0) && (
               <Card>
                 <CardHeader>
                   <CardTitle>Ocorrências de Gatilhos por Categoria</CardTitle>
@@ -358,9 +372,21 @@ export default function Analytics() {
                   </p>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-80">
-                    <Bar data={triggerChartData} options={barChartOptions} />
-                  </div>
+                  {patterns.triggerOccurrences > 0 ? (
+                    <div className="h-80">
+                      <Bar data={triggerChartData} options={barChartOptions} />
+                    </div>
+                  ) : (
+                    // Ter gatilho cadastrado não é o mesmo que tê-lo
+                    // registrado. Sem esta frase, o gráfico simplesmente
+                    // desaparecia e não havia como saber por quê.
+                    <p className="text-sm text-gray-700 p-3 bg-gray-50 rounded-lg">
+                      Você tem {plural(patterns.totalTriggers, "gatilho cadastrado", "gatilhos cadastrados")},
+                      mas nenhum foi marcado em registros de humor ou de sintoma nos últimos{" "}
+                      {patterns.days} dias. Cadastrar descreve o gatilho; marcá-lo ao registrar é o
+                      que permite medir o impacto dele.
+                    </p>
+                  )}
                   {patterns.triggersSemCadastro.length > 0 && (
                     <p className="text-sm text-gray-700 mt-4 p-3 bg-gray-50 rounded-lg">
                       Estes gatilhos aparecem nos seus registros e ainda não estão
@@ -453,8 +479,8 @@ export default function Analytics() {
             <CardContent className="p-6 text-center">
               <BarChart3 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-sm text-gray-600 mb-4">
-                Você ainda não tem registros de humor. Os gráficos desta tela aparecem a partir do
-                primeiro registro.
+                Você ainda não tem nenhum registro de humor. Os gráficos desta tela aparecem a
+                partir do primeiro registro.
               </p>
               <Link href="/mood">
                 <Button>Registrar Humor</Button>

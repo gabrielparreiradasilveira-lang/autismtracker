@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import { normalizarGatilho } from "./triggerMatching";
+import { createMoodEntry } from "./db";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
@@ -315,5 +316,34 @@ describe("analytics.correlations — o vazio precisa se explicar", () => {
 
     expect(result.totalTriggersLogged).toBe(0);
     expect(result.insufficientSample.count).toBe(0);
+  });
+});
+
+describe("analytics.patterns — período vazio não é histórico vazio", () => {
+  it("devolve o total do histórico ao lado do total do período", async () => {
+    const caller = appRouter.createCaller(createAuthContext(812));
+
+    // Registro de 60 dias atrás, gravado direto para escolher a data.
+    const antigo = new Date();
+    antigo.setDate(antigo.getDate() - 60);
+    await createMoodEntry({
+      userId: 812,
+      date: antigo,
+      moodLevel: 7,
+      anxietyLevel: 4,
+      stressLevel: 4,
+      energyLevel: 7,
+      triggers: null,
+    });
+
+    const em30 = await caller.analytics.patterns({ days: 30, timezoneOffsetMinutes: 0 });
+    // O período não tem nada, mas o histórico tem: é a diferença que
+    // fazia a tela inteira sumir dizendo "você não tem registros".
+    expect(em30.totalEntries).toBe(0);
+    expect(em30.totalEntriesAllTime).toBe(1);
+
+    const em90 = await caller.analytics.patterns({ days: 90, timezoneOffsetMinutes: 0 });
+    expect(em90.totalEntries).toBe(1);
+    expect(em90.totalEntriesAllTime).toBe(1);
   });
 });

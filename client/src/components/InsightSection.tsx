@@ -33,10 +33,55 @@ export default function InsightSection({
     );
   }
 
+  // Erro tratado à parte: antes ele caía no mesmo `return null` da
+  // ausência de dados, então falha de rede virava seção inexistente —
+  // indistinguível de "não há nada para mostrar".
+  if (query.isError) {
+    return (
+      <section className="space-y-4" aria-labelledby="insights-heading">
+        <h2 id="insights-heading" className="text-2xl font-bold text-gray-900">
+          {title}
+        </h2>
+        <Card className="bg-amber-50 border-amber-200">
+          <CardContent className="pt-6">
+            <p className="text-sm text-amber-900">
+              Não foi possível carregar suas análises agora. Seus registros estão salvos — o que
+              falhou foi a leitura.
+            </p>
+            <Button size="sm" variant="outline" className="mt-3" onClick={() => query.refetch()}>
+              Tentar de novo
+            </Button>
+          </CardContent>
+        </Card>
+      </section>
+    );
+  }
+
   const insights = query.data?.insights ?? [];
   const missing = query.data?.missing ?? [];
 
-  if (insights.length === 0 && (!showMissing || missing.length === 0)) return null;
+  // Sem nenhum insight e sem a lista do que falta (que nesta tela mora no
+  // painel de cobertura), a seção sumia inteira e a pessoa não tinha como
+  // saber se era falta de dado ou defeito. Agora diz para onde olhar.
+  if (insights.length === 0 && !showMissing) {
+    return (
+      <section className="space-y-4" aria-labelledby="insights-heading">
+        <h2 id="insights-heading" className="text-2xl font-bold text-gray-900">
+          {title}
+        </h2>
+        <Card className="bg-gray-50">
+          <CardContent className="pt-6">
+            <p className="text-sm text-gray-700">
+              Nenhum padrão tem amostra suficiente ainda. O quadro abaixo mostra quanto você já
+              registrou e o que falta para cada análise.
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+    );
+  }
+
+  if (insights.length === 0 && missing.length === 0) return null;
 
   return (
     <section className="space-y-4" aria-labelledby="insights-heading">
