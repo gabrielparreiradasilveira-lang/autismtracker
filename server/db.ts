@@ -558,29 +558,53 @@ export async function getRoutineMoodCorrelations(userId: number) {
       gte(moodEntries.date, startDate)
     ));
 
-  // Group by date
-  const dailyData: Record<string, { routinesCompleted: number; avgMood: number; avgAnxiety: number }> = {};
+  /**
+   * Um registro por dia, montado pela UNIÃO das duas fontes.
+   *
+   * Antes o dia só existia se houvesse linha de rotina, e o humor era
+   * copiado por cima (`avgMood = entry.moodLevel`). Isso produzia dois
+   * erros no número de manchete desta análise: com dois registros de
+   * humor no mesmo dia valia o último lido, e o dia em que a pessoa
+   * registrou humor sem tocar em rotina nenhuma sumia — justamente um
+   * dia "sem rotina", o grupo de comparação.
+   */
+  type DiaAgregado = {
+    routinesCompleted: number;
+    moodSum: number;
+    moodCount: number;
+    anxietySum: number;
+  };
+  const dailyData: Record<string, DiaAgregado> = {};
+
+  const diaDe = (chave: string) => {
+    if (!dailyData[chave]) {
+      dailyData[chave] = { routinesCompleted: 0, moodSum: 0, moodCount: 0, anxietySum: 0 };
+    }
+    return dailyData[chave];
+  };
 
   routineData.forEach(entry => {
-    const dateKey = new Date(entry.date).toISOString().split('T')[0];
-    if (!dailyData[dateKey]) {
-      dailyData[dateKey] = { routinesCompleted: 0, avgMood: 0, avgAnxiety: 0 };
-    }
+    const dia = diaDe(new Date(entry.date).toISOString().split('T')[0]);
     if (entry.completed) {
-      dailyData[dateKey].routinesCompleted++;
+      dia.routinesCompleted++;
     }
   });
 
   moodData.forEach(entry => {
-    const dateKey = new Date(entry.date).toISOString().split('T')[0];
-    if (dailyData[dateKey]) {
-      dailyData[dateKey].avgMood = entry.moodLevel;
-      dailyData[dateKey].avgAnxiety = entry.anxietyLevel;
-    }
+    const dia = diaDe(new Date(entry.date).toISOString().split('T')[0]);
+    dia.moodSum += entry.moodLevel;
+    dia.anxietySum += entry.anxietyLevel;
+    dia.moodCount++;
   });
 
-  // Calculate correlations
-  const daysWithBothData = Object.values(dailyData).filter(d => d.avgMood > 0);
+  // Só entram dias com humor registrado: sem humor não há o que comparar.
+  const daysWithBothData = Object.values(dailyData)
+    .filter(d => d.moodCount > 0)
+    .map(d => ({
+      routinesCompleted: d.routinesCompleted,
+      avgMood: d.moodSum / d.moodCount,
+      avgAnxiety: d.anxietySum / d.moodCount,
+    }));
 
   const MIN_DAYS = 5;
   if (daysWithBothData.length < MIN_DAYS) {
@@ -1126,22 +1150,31 @@ export async function getSymptomMoodCorrelation(userId: number, days: number = 3
   const moodData = await db.select().from(moodEntries)
     .where(and(eq(moodEntries.userId, userId), gte(moodEntries.date, startDate)));
 
-  const dailyData: Record<string, { maxSeverity: number; avgMood: number }> = {};
+  /**
+   * Aqui o dia precisa mesmo das duas fontes: sem sintoma não há
+   * severidade para classificar o dia, e sem humor não há o que comparar.
+   * O que estava errado era só a média — o humor era copiado por cima, de
+   * modo que dois registros no mesmo dia viravam "o último lido".
+   */
+  const dailyData: Record<string, { maxSeverity: number; moodSum: number; moodCount: number }> = {};
 
   for (const entry of symptomData) {
     const dateKey = new Date(entry.date).toISOString().split("T")[0];
-    if (!dailyData[dateKey]) dailyData[dateKey] = { maxSeverity: 0, avgMood: 0 };
+    if (!dailyData[dateKey]) dailyData[dateKey] = { maxSeverity: 0, moodSum: 0, moodCount: 0 };
     dailyData[dateKey].maxSeverity = Math.max(dailyData[dateKey].maxSeverity, entry.severity);
   }
 
   for (const entry of moodData) {
     const dateKey = new Date(entry.date).toISOString().split("T")[0];
     if (dailyData[dateKey]) {
-      dailyData[dateKey].avgMood = entry.moodLevel;
+      dailyData[dateKey].moodSum += entry.moodLevel;
+      dailyData[dateKey].moodCount++;
     }
   }
 
-  const daysWithBoth = Object.values(dailyData).filter((d) => d.avgMood > 0);
+  const daysWithBoth = Object.values(dailyData)
+    .filter((d) => d.moodCount > 0)
+    .map((d) => ({ maxSeverity: d.maxSeverity, avgMood: d.moodSum / d.moodCount }));
 
   if (daysWithBoth.length < 3) {
     return {
