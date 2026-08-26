@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, ArrowLeft, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { Link } from "wouter";
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { fusoDoUsuario } from "@/lib/timezone";
 import { plural } from "@/lib/utils";
@@ -46,14 +47,22 @@ const categoriaDeGatilho: Record<string, string> = {
   other: "Outro / sem cadastro",
 };
 
+/**
+ * As análises são sempre de um período declarado. Antes eram 30 dias
+ * fixos em três consultas — e `trends` até aceitava de 7 a 90, mas
+ * nenhuma tela mudava o valor.
+ */
+const PERIODOS = [7, 30, 90] as const;
+
 export default function Analytics() {
   const { user, isAuthenticated, loading } = useRequireAuth();
+  const [dias, setDias] = useState<number>(30);
   
-  const patternsQuery = trpc.analytics.patterns.useQuery({ days: 30, timezoneOffsetMinutes: fusoDoUsuario() });
-  const trendsQuery = trpc.analytics.trends.useQuery({ days: 30 });
-  const symptomAnalyticsQuery = trpc.symptoms.getAnalytics.useQuery({ days: 30, timezoneOffsetMinutes: fusoDoUsuario() });
+  const patternsQuery = trpc.analytics.patterns.useQuery({ days: dias, timezoneOffsetMinutes: fusoDoUsuario() });
+  const trendsQuery = trpc.analytics.trends.useQuery({ days: dias });
+  const symptomAnalyticsQuery = trpc.symptoms.getAnalytics.useQuery({ days: dias, timezoneOffsetMinutes: fusoDoUsuario() });
   const techniqueAnalyticsQuery = trpc.techniques.getAnalytics.useQuery();
-  const byTimeOfDayQuery = trpc.analytics.byTimeOfDay.useQuery({ days: 90, timezoneOffsetMinutes: fusoDoUsuario() });
+  const byTimeOfDayQuery = trpc.analytics.byTimeOfDay.useQuery({ days: dias, timezoneOffsetMinutes: fusoDoUsuario() });
 
   if (loading) return <PageLoader />;
 
@@ -202,6 +211,22 @@ export default function Analytics() {
             <h1 className="text-3xl font-bold text-gray-900">Análise de Padrões</h1>
           </div>
           <p className="text-gray-600">Visualize tendências e padrões nos seus dados</p>
+
+          <div className="flex flex-wrap items-center gap-2 mt-4">
+            <span className="text-sm text-gray-700">Período:</span>
+            {PERIODOS.map((d) => (
+              <Button
+                key={d}
+                size="sm"
+                variant={dias === d ? "default" : "outline"}
+                onClick={() => setDias(d)}
+                aria-pressed={dias === d}
+                aria-label={`Analisar os últimos ${d} dias`}
+              >
+                {d} dias
+              </Button>
+            ))}
+          </div>
         </div>
 
         {/* Insights vêm primeiro: o número sozinho não diz o que fazer. */}
@@ -311,7 +336,7 @@ export default function Analytics() {
             {trends && trends.entries.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Tendências dos Últimos 30 Dias</CardTitle>
+                  <CardTitle>Tendências dos Últimos {dias} Dias</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-80">
@@ -446,7 +471,7 @@ export default function Analytics() {
             {symptomAnalytics.severityTrend.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Tendência de Severidade (Últimos 30 Dias)</CardTitle>
+                  <CardTitle>Tendência de Severidade (Últimos {dias} Dias)</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-80">
