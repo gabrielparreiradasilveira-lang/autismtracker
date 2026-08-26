@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { and, desc, eq, gte, lte, SQL } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, lte, SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import fs from "fs";
@@ -1483,6 +1483,107 @@ export async function toggleRoutineTask(
   }
 
   return { completedTasks: newTasks, completed: isNowCompleted };
+}
+
+/**
+ * Grava quanto tempo a rotina levou de fato, na entrada de hoje.
+ *
+ * A coluna `timeSpent` existe desde o começo e nunca foi escrita: o
+ * componente de cronômetro (RoutineTimer) estava pronto e não era usado
+ * em tela nenhuma. Sem esse número, `estimatedDuration` não tinha com o
+ * que ser comparado — a estimativa nunca era confrontada com a prática.
+ *
+ * A rotina é conferida por userId antes de qualquer escrita.
+ */
+export async function recordRoutineTime(
+  userId: number,
+  routineId: number,
+  minutes: number,
+  timezoneOffsetMinutes: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const routineRows = await db.select().from(routines)
+    .where(and(eq(routines.id, routineId), eq(routines.userId, userId)))
+    .limit(1);
+  if (routineRows.length === 0) return { affectedRows: 0 };
+
+  const { start: todayStart, end: todayEnd } = getUserDayRange(timezoneOffsetMinutes);
+
+  const todaysEntries = await db.select().from(routineEntries)
+    .where(and(
+      eq(routineEntries.userId, userId),
+      eq(routineEntries.routineId, routineId),
+      gte(routineEntries.date, todayStart),
+      lte(routineEntries.date, todayEnd)
+    ))
+    .limit(1);
+
+  const existing = todaysEntries[0];
+
+  if (existing) {
+    await db.update(routineEntries)
+      .set({ timeSpent: minutes })
+      .where(eq(routineEntries.id, existing.id));
+  } else {
+    // Cronometrar sem ter marcado tarefa nenhuma é possível; a entrada
+    // nasce aqui, ainda não concluída.
+    await db.insert(routineEntries).values({
+      userId,
+      routineId,
+      date: new Date(),
+      timeSpent: minutes,
+      completed: false,
+    });
+  }
+
+  return { affectedRows: 1 };
+}
+
+/**
+ * Tempo real × estimado, por rotina. Só entram rotinas que foram
+ * cronometradas pelo menos uma vez.
+ */
+export async function getRoutineTimeStats(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db.select().from(routineEntries)
+    .innerJoin(routines, eq(routineEntries.routineId, routines.id))
+    .where(and(
+      eq(routineEntries.userId, userId),
+      isNotNull(routineEntries.timeSpent)
+    ));
+
+  const porRotina: Record<number, { title: string; estimated: number | null; soma: number; contagem: number }> = {};
+
+  for (const { routines: routine, routine_entries: entry } of rows) {
+    if (entry.timeSpent == null) continue;
+    if (!porRotina[routine.id]) {
+      porRotina[routine.id] = {
+        title: routine.title,
+        estimated: routine.estimatedDuration,
+        soma: 0,
+        contagem: 0,
+      };
+    }
+    porRotina[routine.id].soma += entry.timeSpent;
+    porRotina[routine.id].contagem++;
+  }
+
+  return Object.entries(porRotina).map(([routineId, d]) => {
+    const averageMinutes = Math.round(d.soma / d.contagem);
+    return {
+      routineId: Number(routineId),
+      title: d.title,
+      estimatedDuration: d.estimated,
+      averageMinutes,
+      timedSessions: d.contagem,
+      // Positivo = leva mais tempo do que a pessoa estimou.
+      difference: d.estimated != null ? averageMinutes - d.estimated : null,
+    };
+  });
 }
 
 export async function getTodayRoutineEntries(userId: number, timezoneOffsetMinutes: number) {

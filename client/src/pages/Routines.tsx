@@ -7,9 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Calendar, ArrowLeft, Edit, Trash2, Plus, Check } from "lucide-react";
+import { Calendar, ArrowLeft, Edit, Trash2, Plus, Check, Timer } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { fusoDoUsuario } from "@/lib/timezone";
+import { plural } from "@/lib/utils";
+import { RoutineTimer } from "@/components/RoutineTimer";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -30,10 +33,28 @@ export default function Routines() {
   const [timeOfDay, setTimeOfDay] = useState("");
   const [tasks, setTasks] = useState<string[]>([""]);
   const [newTask, setNewTask] = useState("");
+  const [estimatedDuration, setEstimatedDuration] = useState("");
+  // Rotina cujo cronômetro está aberto. Só um por vez: cronometrar duas
+  // rotinas ao mesmo tempo não descreveria nenhuma das duas.
+  const [cronometrando, setCronometrando] = useState<number | null>(null);
 
   const routinesQuery = trpc.routines.list.useQuery();
   const todayEntriesQuery = trpc.routines.entries.today.useQuery({
     timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+  });
+
+  const timeStatsQuery = trpc.routineAnalytics.getTimeStats.useQuery();
+
+  const recordTimeMutation = trpc.routines.entries.recordTime.useMutation({
+    onSuccess: () => {
+      toast.success("Tempo registrado!");
+      setCronometrando(null);
+      timeStatsQuery.refetch();
+      todayEntriesQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error("Erro ao registrar o tempo: " + error.message);
+    },
   });
 
   const toggleTaskMutation = trpc.routines.entries.toggleTask.useMutation({
@@ -90,6 +111,7 @@ export default function Routines() {
     setTimeOfDay("");
     setTasks([""]);
     setNewTask("");
+    setEstimatedDuration("");
   };
 
   const addTask = () => {
@@ -119,6 +141,7 @@ export default function Routines() {
         description: description || undefined,
         timeOfDay,
         tasks: validTasks,
+        estimatedDuration: estimatedDuration ? Number(estimatedDuration) : null,
       });
     } else {
       createRoutineMutation.mutate({
@@ -126,6 +149,7 @@ export default function Routines() {
         description: description || undefined,
         timeOfDay,
         tasks: validTasks,
+        estimatedDuration: estimatedDuration ? Number(estimatedDuration) : undefined,
       });
     }
   };
@@ -136,6 +160,7 @@ export default function Routines() {
     setDescription(routine.description || "");
     setTimeOfDay(routine.timeOfDay);
     setTasks(routine.tasks || [""]);
+    setEstimatedDuration(routine.estimatedDuration ? String(routine.estimatedDuration) : "");
     setIsOpen(true);
   };
 
@@ -214,6 +239,23 @@ export default function Routines() {
                 </div>
 
                 <div>
+                  <Label htmlFor="estimatedDuration">Tempo estimado (minutos)</Label>
+                  <Input
+                    id="estimatedDuration"
+                    type="number"
+                    min={1}
+                    max={600}
+                    value={estimatedDuration}
+                    onChange={(e) => setEstimatedDuration(e.target.value)}
+                    placeholder="Quantos minutos você espera levar?"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Opcional. Ao cronometrar a rotina, o app compara este número com o
+                    tempo que ela leva de fato.
+                  </p>
+                </div>
+
+                <div>
                   <Label htmlFor="description">Descrição</Label>
                   <Textarea
                     id="description"
@@ -276,6 +318,7 @@ export default function Routines() {
               const completedTasks = todayEntry?.completedTasks || [];
               const totalTasks = routine.tasks?.length || 0;
               const isCompletedToday = todayEntry?.completed || false;
+              const tempos = timeStatsQuery.data?.find((t) => t.routineId === routine.id);
 
               return (
               <Card key={routine.id}>
@@ -292,6 +335,11 @@ export default function Routines() {
                         <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded">
                           {totalTasks} tarefas
                         </span>
+                        {routine.estimatedDuration != null && (
+                          <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded">
+                            estimada em {plural(routine.estimatedDuration, "minuto", "minutos")}
+                          </span>
+                        )}
                         {routine.currentStreak > 0 && (
                           <span className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded">
                             🔥 {routine.currentStreak} dias
@@ -305,6 +353,21 @@ export default function Routines() {
                       </div>
                     </div>
                     <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setCronometrando(cronometrando === routine.id ? null : routine.id)
+                        }
+                        aria-label={
+                          cronometrando === routine.id
+                            ? `Fechar o cronômetro da rotina ${routine.title}`
+                            : `Cronometrar a rotina ${routine.title}`
+                        }
+                        aria-pressed={cronometrando === routine.id}
+                      >
+                        <Timer className="w-4 h-4" />
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(routine)}>
                         <Edit className="w-4 h-4" />
                       </Button>
@@ -350,6 +413,37 @@ export default function Routines() {
                       );
                     })}
                   </div>
+
+                  {cronometrando === routine.id && (
+                    <div className="mt-4">
+                      <RoutineTimer
+                        routineTitle={routine.title}
+                        estimatedDuration={routine.estimatedDuration ?? undefined}
+                        onComplete={(minutos) =>
+                          recordTimeMutation.mutate({
+                            routineId: routine.id,
+                            minutes: minutos,
+                            timezoneOffsetMinutes: fusoDoUsuario(),
+                          })
+                        }
+                      />
+                    </div>
+                  )}
+
+                  {tempos && (
+                    <p className="text-sm text-gray-700 mt-4 p-3 bg-gray-50 rounded-lg">
+                      Na prática esta rotina leva{" "}
+                      <strong>{plural(tempos.averageMinutes, "minuto", "minutos")}</strong>, média
+                      de {plural(tempos.timedSessions, "vez cronometrada", "vezes cronometradas")}.
+                      {tempos.difference != null && tempos.estimatedDuration != null && (
+                        Math.abs(tempos.difference) < 2
+                          ? " É praticamente o tempo que você estimou."
+                          : tempos.difference > 0
+                            ? ` São ${plural(tempos.difference, "minuto", "minutos")} a mais do que os ${tempos.estimatedDuration} que você estimou — vale ajustar a estimativa ou reduzir as tarefas.`
+                            : ` São ${plural(Math.abs(tempos.difference), "minuto", "minutos")} a menos do que os ${tempos.estimatedDuration} que você estimou.`
+                      )}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
               );

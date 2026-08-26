@@ -222,6 +222,10 @@ export const appRouter = router({
         tasks: z.array(z.string()),
         timeOfDay: z.string(),
         isActive: z.boolean().optional(),
+        // Minutos que a pessoa espera levar. O cronômetro compara a
+        // estimativa com o tempo real; antes o campo existia na tabela e
+        // nenhuma tela o preenchia.
+        estimatedDuration: z.number().int().min(1).max(600).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         await db.createRoutine({
@@ -231,6 +235,7 @@ export const appRouter = router({
           tasks: input.tasks || null,
           timeOfDay: input.timeOfDay,
           isActive: input.isActive ?? true,
+          estimatedDuration: input.estimatedDuration ?? null,
           createdAt: new Date(),
         });
         return { success: true };
@@ -248,6 +253,7 @@ export const appRouter = router({
         tasks: z.array(z.string()).optional(),
         timeOfDay: z.string().optional(),
         isActive: z.boolean().optional(),
+        estimatedDuration: z.number().int().min(1).max(600).nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const { id, ...data } = input;
@@ -288,6 +294,24 @@ export const appRouter = router({
         }).optional())
         .query(async ({ ctx, input }) => {
           return await db.getRoutineEntriesByUser(ctx.user.id, input?.routineId);
+        }),
+
+      /** Grava o tempo cronometrado na entrada de hoje daquela rotina. */
+      recordTime: protectedProcedure
+        .input(z.object({
+          routineId: z.number(),
+          minutes: z.number().int().min(1).max(600),
+          timezoneOffsetMinutes: z.number(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          return assertOwned(
+            await db.recordRoutineTime(
+              ctx.user.id,
+              input.routineId,
+              input.minutes,
+              input.timezoneOffsetMinutes
+            )
+          );
         }),
 
       update: protectedProcedure
@@ -727,6 +751,11 @@ export const appRouter = router({
 
     getUserStats: protectedProcedure.query(async ({ ctx }) => {
       return await db.getUserRoutineStats(ctx.user.id);
+    }),
+
+    /** Tempo real × estimado, por rotina cronometrada. */
+    getTimeStats: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getRoutineTimeStats(ctx.user.id);
     }),
   }),
 

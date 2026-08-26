@@ -130,14 +130,19 @@ export function RoutineTimer({ routineTitle, estimatedDuration, onComplete }: Ro
                 disabled={seconds === 0}
               >
                 <Check className="w-4 h-4 mr-2" />
-                Concluir
+                Registrar tempo
               </Button>
             </>
           ) : (
             <div className="text-center w-full">
+              {/* O cronômetro registra tempo; quem conclui a rotina é a
+                  marcação das tarefas. Dizer "rotina concluída" aqui
+                  afirmaria algo que não aconteceu. */}
               <div className="flex items-center justify-center gap-2 text-green-600 mb-3">
                 <Check className="w-6 h-6" />
-                <span className="font-semibold">Rotina Concluída!</span>
+                <span className="font-semibold">
+                  Tempo registrado: {Math.ceil(seconds / 60)} min
+                </span>
               </div>
               <Button onClick={handleReset} variant="outline" size="sm">
                 Reiniciar Timer
@@ -146,14 +151,14 @@ export function RoutineTimer({ routineTitle, estimatedDuration, onComplete }: Ro
           )}
         </div>
 
-        {/* Motivational Message */}
+        {/* Estado do cronômetro, em linguagem literal: nada de metáfora
+            nem de suposição sobre como a pessoa está se sentindo. */}
         {!isCompleted && seconds > 0 && (
           <div className="mt-4 p-3 bg-purple-50 rounded-lg text-center">
             <p className="text-sm text-purple-800">
-              {seconds < 60 ? "Você começou! Continue assim! 💪" :
-               seconds < 300 ? "Ótimo progresso! Mantenha o foco! 🎯" :
-               seconds < 600 ? "Você está indo muito bem! 🌟" :
-               "Incrível dedicação! Você é incrível! 🏆"}
+              {isRunning
+                ? `Cronômetro em andamento há ${formatTime(seconds)}.`
+                : `Cronômetro pausado em ${formatTime(seconds)}. Toque em Continuar para retomar.`}
             </p>
           </div>
         )}
