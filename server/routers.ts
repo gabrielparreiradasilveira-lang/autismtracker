@@ -121,6 +121,10 @@ export const appRouter = router({
           date: new Date(),
         });
 
+        // Registrar o gatilho aqui atualiza o cadastro dele: é o que faz
+        // "última ocorrência" significar alguma coisa.
+        await db.touchTriggersByName(ctx.user.id, input.triggers ?? []);
+
         await gamification.recordActivity(ctx.user.id, 5);
         await gamification.syncCountChallenges(ctx.user.id, "mood");
 
@@ -527,31 +531,67 @@ export const appRouter = router({
         };
       }),
 
+    /**
+     * Humor e ansiedade médios nos dias de cada gatilho.
+     *
+     * O agrupamento é pelo nome normalizado: antes, "Barulho" e "barulho"
+     * viravam dois gatilhos diferentes, cada um com metade das
+     * ocorrências — e os dois podiam ficar abaixo do mínimo de 3 e sumir
+     * da lista, mesmo tendo sido registrados seis vezes ao todo.
+     *
+     * Cada gatilho vem acompanhado do que existe no cadastro dele
+     * (categoria, severidade e principalmente a estratégia de
+     * enfrentamento). Sem isso, a tela apontava um gatilho de alto
+     * impacto sem mostrar a estratégia que a própria pessoa já tinha
+     * escrito para ele, em outra tela.
+     */
     correlations: protectedProcedure.query(async ({ ctx }) => {
       const moodEntries = await db.getMoodEntriesByUser(ctx.user.id);
-      const triggers = await db.getSensoryTriggersByUser(ctx.user.id);
+      const cadastrados = await db.getSensoryTriggersByUser(ctx.user.id);
+      const indice = indexarGatilhos(cadastrados);
 
-      // Correlate mood with triggers
-      const triggerImpact = moodEntries
-        .filter(e => e.triggers && e.triggers.length > 0)
-        .reduce((acc, entry) => {
-          entry.triggers?.forEach((trigger: string) => {
-            if (!acc[trigger]) {
-              acc[trigger] = { count: 0, totalMood: 0, totalAnxiety: 0 };
-            }
-            acc[trigger].count++;
-            acc[trigger].totalMood += entry.moodLevel;
-            acc[trigger].totalAnxiety += entry.anxietyLevel;
-          });
-          return acc;
-        }, {} as Record<string, { count: number; totalMood: number; totalAnxiety: number }>);
+      const triggerImpact: Record<
+        string,
+        { label: string; count: number; totalMood: number; totalAnxiety: number }
+      > = {};
 
-      const all = Object.entries(triggerImpact).map(([trigger, data]) => ({
-        trigger,
-        avgMood: data.totalMood / data.count,
-        avgAnxiety: data.totalAnxiety / data.count,
-        occurrences: data.count,
-      }));
+      for (const entry of moodEntries) {
+        for (const nome of entry.triggers || []) {
+          const chave = normalizarGatilho(nome);
+          if (!chave) continue;
+          if (!triggerImpact[chave]) {
+            // O nome do cadastro manda no rótulo; sem cadastro, vale a
+            // primeira grafia que a pessoa usou.
+            triggerImpact[chave] = {
+              label: indice.get(chave)?.name ?? nome.trim(),
+              count: 0,
+              totalMood: 0,
+              totalAnxiety: 0,
+            };
+          }
+          triggerImpact[chave].count++;
+          triggerImpact[chave].totalMood += entry.moodLevel;
+          triggerImpact[chave].totalAnxiety += entry.anxietyLevel;
+        }
+      }
+
+      const all = Object.entries(triggerImpact).map(([chave, data]) => {
+        const cadastrado = indice.get(chave);
+        return {
+          trigger: data.label,
+          avgMood: data.totalMood / data.count,
+          avgAnxiety: data.totalAnxiety / data.count,
+          occurrences: data.count,
+          registered: cadastrado
+            ? {
+                id: cadastrado.id,
+                category: cadastrado.category,
+                severity: cadastrado.severity,
+                copingStrategy: cadastrado.copingStrategy,
+              }
+            : null,
+        };
+      });
 
       // Um gatilho registrado uma ou duas vezes não sustenta uma média:
       // antes, um único registro ruim podia encabeçar o ranking como
@@ -1097,6 +1137,7 @@ export const appRouter = router({
           effectiveness: input.effectiveness ?? null,
           notes: input.notes ?? null,
         });
+        await db.touchTriggersByName(ctx.user.id, input.triggers ?? []);
         return entry;
       }),
 

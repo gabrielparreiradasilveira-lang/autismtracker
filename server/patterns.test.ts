@@ -145,3 +145,118 @@ describe("analytics.patterns — frequência de gatilhos", () => {
     await expect(publicCaller.analytics.patterns(padroes)).rejects.toThrow();
   });
 });
+
+describe("gatilho digitado × gatilho cadastrado", () => {
+  it("registrar o gatilho atualiza a última ocorrência no cadastro", async () => {
+    const caller = appRouter.createCaller(createAuthContext(805));
+
+    await caller.triggers.create({
+      name: "Sirene",
+      category: "sound",
+      severity: 9,
+      frequency: "rarely",
+    });
+
+    const antes = (await caller.triggers.list())[0];
+    expect(antes.lastOccurred).toBeNull();
+
+    await caller.mood.create({
+      moodLevel: 3,
+      anxietyLevel: 9,
+      stressLevel: 8,
+      energyLevel: 3,
+      triggers: ["sirene"],
+      timezoneOffsetMinutes: 0,
+    });
+
+    const depois = (await caller.triggers.list())[0];
+    expect(depois.lastOccurred).toBeInstanceOf(Date);
+  });
+
+  it("registrar gatilho não cadastrado não quebra nem cria cadastro", async () => {
+    const caller = appRouter.createCaller(createAuthContext(806));
+
+    await caller.symptoms.create({
+      symptomType: "focus",
+      severity: 6,
+      triggers: ["um gatilho qualquer"],
+    });
+
+    expect(await caller.triggers.list()).toEqual([]);
+  });
+});
+
+describe("analytics.correlations", () => {
+  it("junta grafias do mesmo gatilho em vez de dividir a amostra", async () => {
+    const caller = appRouter.createCaller(createAuthContext(807));
+
+    // Três ocorrências do mesmo gatilho, escritas de três jeitos. Antes
+    // viravam três gatilhos de 1 ocorrência e nenhum atingia o mínimo.
+    for (const grafia of ["Barulho alto", "barulho alto", "  BARULHO ALTO "]) {
+      await caller.mood.create({
+        moodLevel: 3,
+        anxietyLevel: 8,
+        stressLevel: 7,
+        energyLevel: 4,
+        triggers: [grafia],
+        timezoneOffsetMinutes: 0,
+      });
+    }
+
+    const { correlations } = await caller.analytics.correlations();
+
+    expect(correlations).toHaveLength(1);
+    expect(correlations[0].occurrences).toBe(3);
+    expect(correlations[0].avgMood).toBe(3);
+  });
+
+  it("traz a estratégia de enfrentamento já cadastrada para o gatilho", async () => {
+    const caller = appRouter.createCaller(createAuthContext(808));
+
+    await caller.triggers.create({
+      name: "Luz fluorescente",
+      category: "light",
+      severity: 8,
+      frequency: "daily",
+      copingStrategy: "Usar boné e ficar perto da janela",
+    });
+
+    for (let i = 0; i < 3; i++) {
+      await caller.mood.create({
+        moodLevel: 3,
+        anxietyLevel: 8,
+        stressLevel: 7,
+        energyLevel: 4,
+        triggers: ["luz fluorescente"],
+        timezoneOffsetMinutes: 0,
+      });
+    }
+
+    const { correlations } = await caller.analytics.correlations();
+    const luz = correlations[0];
+
+    // O rótulo vem do cadastro, não da grafia digitada.
+    expect(luz.trigger).toBe("Luz fluorescente");
+    expect(luz.registered?.category).toBe("light");
+    expect(luz.registered?.copingStrategy).toBe("Usar boné e ficar perto da janela");
+  });
+
+  it("gatilho sem cadastro vem com registered nulo", async () => {
+    const caller = appRouter.createCaller(createAuthContext(809));
+
+    for (let i = 0; i < 3; i++) {
+      await caller.mood.create({
+        moodLevel: 5,
+        anxietyLevel: 5,
+        stressLevel: 5,
+        energyLevel: 5,
+        triggers: ["algo novo"],
+        timezoneOffsetMinutes: 0,
+      });
+    }
+
+    const { correlations } = await caller.analytics.correlations();
+    expect(correlations[0].trigger).toBe("algo novo");
+    expect(correlations[0].registered).toBeNull();
+  });
+});

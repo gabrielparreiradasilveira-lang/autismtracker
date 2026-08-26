@@ -9,6 +9,17 @@ import { trpc } from "@/lib/trpc";
 import { fusoDoUsuario } from "@/lib/timezone";
 import { plural } from "@/lib/utils";
 
+/** Mesmos rótulos usados na tela de Gatilhos. */
+const categoriaDeGatilho: Record<string, string> = {
+  sound: "Som",
+  light: "Luz",
+  texture: "Textura",
+  smell: "Cheiro",
+  taste: "Sabor",
+  visual: "Visual",
+  other: "Outro",
+};
+
 export default function Correlations() {
   const { user, isAuthenticated, loading } = useRequireAuth();
   
@@ -114,6 +125,12 @@ export default function Correlations() {
                             <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded">
                               {correlation.occurrences} ocorrência{correlation.occurrences !== 1 ? 's' : ''}
                             </span>
+                            {correlation.registered && (
+                              <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                                {categoriaDeGatilho[correlation.registered.category] ||
+                                  correlation.registered.category}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -178,6 +195,33 @@ export default function Correlations() {
                           )}
                         </p>
                       </div>
+
+                      {/* A estratégia que a pessoa já escreveu para este
+                          gatilho mora na tela de Gatilhos e nunca aparecia
+                          aqui — bem no lugar em que ela é necessária. */}
+                      {correlation.registered?.copingStrategy ? (
+                        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-sm text-green-900">
+                            <strong>Sua estratégia para este gatilho:</strong>{" "}
+                            {correlation.registered.copingStrategy}
+                          </p>
+                        </div>
+                      ) : impact.level !== "Baixo" ? (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <p className="text-sm text-amber-900">
+                            Você ainda não escreveu uma estratégia de enfrentamento para
+                            este gatilho.{" "}
+                            <Link href="/triggers">
+                              <span className="underline cursor-pointer">
+                                {correlation.registered
+                                  ? "Adicionar estratégia"
+                                  : "Cadastrar este gatilho"}
+                              </span>
+                            </Link>
+                            .
+                          </p>
+                        </div>
+                      ) : null}
                     </CardContent>
                   </Card>
                 );

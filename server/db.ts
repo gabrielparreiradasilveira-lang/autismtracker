@@ -27,6 +27,7 @@ import {
   userSettings,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { indexarGatilhos, normalizarGatilho } from "./triggerMatching";
 import { MIGRATION_SQL } from "./migrations";
 import { runSeeds } from "./seeds";
 
@@ -187,6 +188,42 @@ export async function getSensoryTriggersByUser(userId: number) {
     .where(eq(sensoryTriggers.userId, userId))
     .orderBy(desc(sensoryTriggers.createdAt));
   return result;
+}
+
+/**
+ * Marca no cadastro que estes gatilhos acabaram de acontecer.
+ *
+ * `lastOccurred` existe na tabela desde o início e só podia ser
+ * preenchido à mão, na tela de Gatilhos — ou seja, ficava sempre vazio,
+ * mesmo para quem registrava o gatilho todo dia em humor e sintomas.
+ * Agora quem registra a ocorrência atualiza o cadastro.
+ *
+ * Nome que não existe no cadastro é ignorado em silêncio: o texto é
+ * livre de propósito, e cadastrar não pode virar obrigação para
+ * registrar.
+ */
+export async function touchTriggersByName(userId: number, nomes: string[], quando = new Date()) {
+  if (nomes.length === 0) return { atualizados: 0 };
+
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const cadastrados = await getSensoryTriggersByUser(userId);
+  const indice = indexarGatilhos(cadastrados);
+
+  const ids = new Set<number>();
+  for (const nome of nomes) {
+    const encontrado = indice.get(normalizarGatilho(nome));
+    if (encontrado) ids.add(encontrado.id);
+  }
+
+  for (const id of ids) {
+    await db.update(sensoryTriggers)
+      .set({ lastOccurred: quando })
+      .where(and(eq(sensoryTriggers.id, id), eq(sensoryTriggers.userId, userId)));
+  }
+
+  return { atualizados: ids.size };
 }
 
 export async function updateSensoryTrigger(id: number, userId: number, data: Partial<InsertSensoryTrigger>) {
