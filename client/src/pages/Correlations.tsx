@@ -6,13 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GitBranch, ArrowLeft, AlertCircle, CheckCircle, Info } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { fusoDoUsuario } from "@/lib/timezone";
 import { plural } from "@/lib/utils";
 
 export default function Correlations() {
   const { user, isAuthenticated, loading } = useRequireAuth();
   
   const correlationsQuery = trpc.analytics.correlations.useQuery();
-  const symptomCorrelationQuery = trpc.symptoms.getMoodCorrelation.useQuery({ days: 30 });
+  const symptomCorrelationQuery = trpc.symptoms.getMoodCorrelation.useQuery({ days: 30, timezoneOffsetMinutes: fusoDoUsuario() });
 
   if (loading) return <PageLoader />;
 

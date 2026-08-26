@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar, ArrowLeft, TrendingUp, Brain, Clock } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { fusoDoUsuario } from "@/lib/timezone";
 import { RoutineStreaks } from "@/components/RoutineStreaks";
 import { RoutineProgressChart } from "@/components/RoutineProgressChart";
 
@@ -13,8 +14,8 @@ export default function RoutinesEnhanced() {
   const { user, isAuthenticated, loading } = useRequireAuth();
 
   const streaksQuery = trpc.routineAnalytics.getStreaks.useQuery();
-  const progressQuery = trpc.routineAnalytics.getProgress.useQuery({ period: "week" });
-  const correlationsQuery = trpc.routineAnalytics.getCorrelations.useQuery();
+  const progressQuery = trpc.routineAnalytics.getProgress.useQuery({ period: "week", timezoneOffsetMinutes: fusoDoUsuario() });
+  const correlationsQuery = trpc.routineAnalytics.getCorrelations.useQuery({ timezoneOffsetMinutes: fusoDoUsuario() });
   const bestTimesQuery = trpc.routineAnalytics.getBestTimes.useQuery();
   const adhesionQuery = trpc.routineAnalytics.getAdhesion.useQuery({ period: "month" });
   const statsQuery = trpc.routineAnalytics.getUserStats.useQuery();

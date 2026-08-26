@@ -30,7 +30,7 @@ describe("symptoms.getAnalytics", () => {
     const ctx = createAuthContext(501);
     const caller = appRouter.createCaller(ctx);
 
-    const analytics = await caller.symptoms.getAnalytics();
+    const analytics = await caller.symptoms.getAnalytics({ timezoneOffsetMinutes: 0 });
 
     expect(analytics.totalEntries).toBe(0);
     expect(analytics.averageSeverityByType).toEqual([]);
@@ -62,7 +62,7 @@ describe("symptoms.getAnalytics", () => {
       severity: 6,
     });
 
-    const analytics = await caller.symptoms.getAnalytics();
+    const analytics = await caller.symptoms.getAnalytics({ timezoneOffsetMinutes: 0 });
 
     expect(analytics.totalEntries).toBe(3);
 
@@ -84,7 +84,7 @@ describe("symptoms.getAnalytics", () => {
       res: {} as TrpcContext["res"],
     });
 
-    await expect(publicCaller.symptoms.getAnalytics()).rejects.toThrow();
+    await expect(publicCaller.symptoms.getAnalytics({ timezoneOffsetMinutes: 0 })).rejects.toThrow();
   });
 });
 
@@ -95,7 +95,7 @@ describe("symptoms.getMoodCorrelation", () => {
 
     await caller.symptoms.create({ symptomType: "focus", severity: 9 });
 
-    const correlation = await caller.symptoms.getMoodCorrelation();
+    const correlation = await caller.symptoms.getMoodCorrelation({ timezoneOffsetMinutes: 0 });
     expect(correlation.hasSufficientData).toBe(false);
   });
 
@@ -106,7 +106,7 @@ describe("symptoms.getMoodCorrelation", () => {
       res: {} as TrpcContext["res"],
     });
 
-    await expect(publicCaller.symptoms.getMoodCorrelation()).rejects.toThrow();
+    await expect(publicCaller.symptoms.getMoodCorrelation({ timezoneOffsetMinutes: 0 })).rejects.toThrow();
   });
 });
 

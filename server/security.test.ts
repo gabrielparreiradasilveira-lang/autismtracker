@@ -183,7 +183,8 @@ describe("Ranking não expõe outros usuários", () => {
 
   it("devolve só posição e totais, sem nome de ninguém", async () => {
     const { alice } = pair(7500);
-    await alice.mood.create({ moodLevel: 7, anxietyLevel: 3, stressLevel: 3, energyLevel: 7 });
+    await alice.mood.create({ moodLevel: 7, anxietyLevel: 3, stressLevel: 3, energyLevel: 7,
+      timezoneOffsetMinutes: 0, });
 
     const ranking = await alice.gamification.getMyRanking();
 

@@ -103,6 +103,10 @@ export const appRouter = router({
         energyLevel: z.number().min(1).max(10),
         notes: z.string().optional(),
         triggers: z.array(z.string()).optional(),
+        // Sem o fuso do navegador a sequência de dias seguidos é contada
+        // no relógio do servidor (UTC no Railway), e quem registra à
+        // noite perde a sequência sem ter falhado nenhum dia.
+        timezoneOffsetMinutes: z.number(),
       }))
       .mutation(async ({ ctx, input }) => {
         await db.createMoodEntry({
@@ -121,7 +125,7 @@ export const appRouter = router({
 
         const [entryCount, moodStreak] = await Promise.all([
           db.getMoodEntriesByUser(ctx.user.id).then((entries) => entries.length),
-          db.getMoodStreak(ctx.user.id),
+          db.getMoodStreak(ctx.user.id, input.timezoneOffsetMinutes),
         ]);
         if (entryCount === 1) {
           await gamification.unlockBadgeByName(ctx.user.id, "Primeiro Passo");
@@ -394,9 +398,11 @@ export const appRouter = router({
      * Devolve também `missing`: o que falta registrar para desbloquear
      * cada análise ainda indisponível.
      */
-    insights: protectedProcedure.query(async ({ ctx }) => {
-      return await generateInsights(ctx.user.id);
-    }),
+    insights: protectedProcedure
+      .input(z.object({ timezoneOffsetMinutes: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await generateInsights(ctx.user.id, input.timezoneOffsetMinutes);
+      }),
 
     patterns: protectedProcedure.query(async ({ ctx }) => {
       const moodEntries = await db.getMoodEntriesByUser(ctx.user.id);
@@ -626,18 +632,26 @@ export const appRouter = router({
       .input(z.object({
         routineId: z.number().optional(),
         period: z.enum(["week", "month"]).default("week"),
+        timezoneOffsetMinutes: z.number(),
       }))
       .query(async ({ ctx, input }) => {
-        return await db.getRoutineProgress(ctx.user.id, input.routineId, input.period);
+        return await db.getRoutineProgress(
+          ctx.user.id,
+          input.timezoneOffsetMinutes,
+          input.routineId,
+          input.period
+        );
       }),
 
     getStreaks: protectedProcedure.query(async ({ ctx }) => {
       return await db.getRoutineStreaks(ctx.user.id);
     }),
 
-    getCorrelations: protectedProcedure.query(async ({ ctx }) => {
-      return await db.getRoutineMoodCorrelations(ctx.user.id);
-    }),
+    getCorrelations: protectedProcedure
+      .input(z.object({ timezoneOffsetMinutes: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await db.getRoutineMoodCorrelations(ctx.user.id, input.timezoneOffsetMinutes);
+      }),
 
     getBestTimes: protectedProcedure.query(async ({ ctx }) => {
       return await db.getBestRoutineTimes(ctx.user.id);
@@ -1062,17 +1076,19 @@ export const appRouter = router({
     getAnalytics: protectedProcedure
       .input(z.object({
         days: z.number().int().min(1).max(365).default(30),
-      }).optional())
+        timezoneOffsetMinutes: z.number(),
+      }))
       .query(async ({ ctx, input }) => {
-        return await db.getSymptomAnalytics(ctx.user.id, input?.days ?? 30);
+        return await db.getSymptomAnalytics(ctx.user.id, input.timezoneOffsetMinutes, input.days ?? 30);
       }),
 
     getMoodCorrelation: protectedProcedure
       .input(z.object({
         days: z.number().int().min(1).max(365).default(30),
-      }).optional())
+        timezoneOffsetMinutes: z.number(),
+      }))
       .query(async ({ ctx, input }) => {
-        return await db.getSymptomMoodCorrelation(ctx.user.id, input?.days ?? 30);
+        return await db.getSymptomMoodCorrelation(ctx.user.id, input.timezoneOffsetMinutes, input.days ?? 30);
       }),
   }),
 

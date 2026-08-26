@@ -459,7 +459,12 @@ export async function getSmartReminderSuggestions(userId: number) {
 
 // ===== Routine Analytics Functions =====
 
-export async function getRoutineProgress(userId: number, routineId?: number, period: "week" | "month" = "week") {
+export async function getRoutineProgress(
+  userId: number,
+  timezoneOffsetMinutes: number,
+  routineId?: number,
+  period: "week" | "month" = "week"
+) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -490,7 +495,7 @@ export async function getRoutineProgress(userId: number, routineId?: number, per
   const dailyData: Record<string, { completed: number; total: number }> = {};
 
   entries.forEach(entry => {
-    const dateKey = new Date(entry.date).toISOString().split('T')[0];
+    const dateKey = getUserDayKey(timezoneOffsetMinutes, new Date(entry.date));
     if (!dailyData[dateKey]) {
       dailyData[dateKey] = { completed: 0, total: 0 };
     }
@@ -538,7 +543,7 @@ export async function getRoutineStreaks(userId: number) {
   }));
 }
 
-export async function getRoutineMoodCorrelations(userId: number) {
+export async function getRoutineMoodCorrelations(userId: number, timezoneOffsetMinutes: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -584,14 +589,14 @@ export async function getRoutineMoodCorrelations(userId: number) {
   };
 
   routineData.forEach(entry => {
-    const dia = diaDe(new Date(entry.date).toISOString().split('T')[0]);
+    const dia = diaDe(getUserDayKey(timezoneOffsetMinutes, new Date(entry.date)));
     if (entry.completed) {
       dia.routinesCompleted++;
     }
   });
 
   moodData.forEach(entry => {
-    const dia = diaDe(new Date(entry.date).toISOString().split('T')[0]);
+    const dia = diaDe(getUserDayKey(timezoneOffsetMinutes, new Date(entry.date)));
     dia.moodSum += entry.moodLevel;
     dia.anxietySum += entry.anxietyLevel;
     dia.moodCount++;
@@ -910,17 +915,17 @@ export async function countExerciseSessionsInRange(
  * counting backwards from today without gaps. Used to unlock the
  * "Semana Consciente" badge at 7 consecutive days.
  */
-export async function getMoodStreak(userId: number) {
+export async function getMoodStreak(userId: number, timezoneOffsetMinutes: number) {
   const entries = await getMoodEntriesByUser(userId);
   if (entries.length === 0) return 0;
 
   const daySet = new Set<number>();
   for (const entry of entries) {
-    const { start } = getUserDayRange(0, new Date(entry.date));
+    const { start } = getUserDayRange(timezoneOffsetMinutes, new Date(entry.date));
     daySet.add(start.getTime());
   }
 
-  const { start: todayStart } = getUserDayRange(0);
+  const { start: todayStart } = getUserDayRange(timezoneOffsetMinutes);
   let streak = 0;
   let expected = todayStart.getTime();
   while (daySet.has(expected)) {
@@ -996,7 +1001,11 @@ export async function updateSymptomEntry(
   return { affectedRows: result.length };
 }
 
-export async function getSymptomAnalytics(userId: number, days: number = 30) {
+export async function getSymptomAnalytics(
+  userId: number,
+  timezoneOffsetMinutes: number,
+  days: number = 30
+) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -1017,9 +1026,7 @@ export async function getSymptomAnalytics(userId: number, days: number = 30) {
   const effectivenessByType: Record<string, { total: number; count: number }> = {};
   // Severidade por dia da semana (0=domingo), para revelar padrões semanais.
   const byWeekday: Record<number, { total: number; count: number }> = {};
-  // Duração por tipo de sintoma. Agrupa apenas por tipo, nunca por data:
-  // o agrupamento por dia deste arquivo ainda usa dia em UTC, e uma
-  // métrica nova encaixada ali nasceria com o mesmo erro de fuso.
+  // Duração por tipo de sintoma.
   const durationByType: Record<string, { total: number; count: number }> = {};
   let effectivenessTotal = 0;
   let effectivenessCount = 0;
@@ -1031,12 +1038,14 @@ export async function getSymptomAnalytics(userId: number, days: number = 30) {
     byType[entry.symptomType].total += entry.severity;
     byType[entry.symptomType].count++;
 
-    const dayKey = new Date(entry.date).toISOString().split("T")[0];
+    const relogioDoUsuario = toUserWallClock(timezoneOffsetMinutes, new Date(entry.date));
+
+    const dayKey = relogioDoUsuario.toISOString().split("T")[0];
     if (!byDay[dayKey]) byDay[dayKey] = { total: 0, count: 0 };
     byDay[dayKey].total += entry.severity;
     byDay[dayKey].count++;
 
-    const weekday = new Date(entry.date).getDay();
+    const weekday = relogioDoUsuario.getUTCDay();
     if (!byWeekday[weekday]) byWeekday[weekday] = { total: 0, count: 0 };
     byWeekday[weekday].total += entry.severity;
     byWeekday[weekday].count++;
@@ -1137,7 +1146,11 @@ export async function getSymptomAnalytics(userId: number, days: number = 30) {
  * days with only lower-severity symptoms, mirroring the shape of
  * getRoutineMoodCorrelations for the routine<->mood pairing.
  */
-export async function getSymptomMoodCorrelation(userId: number, days: number = 30) {
+export async function getSymptomMoodCorrelation(
+  userId: number,
+  timezoneOffsetMinutes: number,
+  days: number = 30
+) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -1159,13 +1172,13 @@ export async function getSymptomMoodCorrelation(userId: number, days: number = 3
   const dailyData: Record<string, { maxSeverity: number; moodSum: number; moodCount: number }> = {};
 
   for (const entry of symptomData) {
-    const dateKey = new Date(entry.date).toISOString().split("T")[0];
+    const dateKey = getUserDayKey(timezoneOffsetMinutes, new Date(entry.date));
     if (!dailyData[dateKey]) dailyData[dateKey] = { maxSeverity: 0, moodSum: 0, moodCount: 0 };
     dailyData[dateKey].maxSeverity = Math.max(dailyData[dateKey].maxSeverity, entry.severity);
   }
 
   for (const entry of moodData) {
-    const dateKey = new Date(entry.date).toISOString().split("T")[0];
+    const dateKey = getUserDayKey(timezoneOffsetMinutes, new Date(entry.date));
     if (dailyData[dateKey]) {
       dailyData[dateKey].moodSum += entry.moodLevel;
       dailyData[dateKey].moodCount++;
@@ -1289,6 +1302,25 @@ export function getUserDayRange(timezoneOffsetMinutes: number, reference: Date =
   const start = new Date(localWallClock.getTime() + offsetMs);
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
   return { start, end };
+}
+
+/**
+ * O mesmo instante lido no relógio de parede do usuário — devolvido como
+ * um Date cujos campos UTC já são a hora local dele. Serve para agrupar:
+ * `.toISOString().split("T")[0]` dá o dia, `.getUTCDay()` o dia da
+ * semana e `.getUTCHours()` a hora, todos no fuso certo.
+ *
+ * Existe porque as análises agrupavam com `toISOString()` direto sobre o
+ * instante em UTC. Com o servidor no Railway (UTC) e o usuário em UTC-3,
+ * tudo que fosse registrado a partir das 21h contava no dia seguinte.
+ */
+export function toUserWallClock(timezoneOffsetMinutes: number, date: Date) {
+  return new Date(date.getTime() - timezoneOffsetMinutes * 60 * 1000);
+}
+
+/** Chave "AAAA-MM-DD" do dia do usuário, para agrupar por dia. */
+export function getUserDayKey(timezoneOffsetMinutes: number, date: Date) {
+  return toUserWallClock(timezoneOffsetMinutes, date).toISOString().split("T")[0];
 }
 
 async function recordRoutineCompletion(userId: number, routineId: number, timezoneOffsetMinutes: number) {

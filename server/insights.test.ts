@@ -28,12 +28,12 @@ function createAuthContext(userId: number): TrpcContext {
 type Caller = ReturnType<typeof appRouter.createCaller>;
 
 const insightById = async (caller: Caller, id: string) => {
-  const { insights } = await caller.analytics.insights();
+  const { insights } = await caller.analytics.insights({ timezoneOffsetMinutes: 0 });
   return insights.find((i) => i.id === id);
 };
 
 const missingById = async (caller: Caller, id: string) => {
-  const { missing } = await caller.analytics.insights();
+  const { missing } = await caller.analytics.insights({ timezoneOffsetMinutes: 0 });
   return missing.find((m) => m.id === id);
 };
 
@@ -41,7 +41,7 @@ describe("analytics.insights — dados insuficientes", () => {
   it("um usuário sem nenhum registro recebe só o que falta, e nenhum insight", async () => {
     const caller = appRouter.createCaller(createAuthContext(601));
 
-    const { insights, missing } = await caller.analytics.insights();
+    const { insights, missing } = await caller.analytics.insights({ timezoneOffsetMinutes: 0 });
 
     expect(insights).toEqual([]);
     expect(missing.length).toBe(6);
@@ -59,7 +59,7 @@ describe("analytics.insights — dados insuficientes", () => {
       res: {} as TrpcContext["res"],
     });
 
-    await expect(publicCaller.analytics.insights()).rejects.toThrow();
+    await expect(publicCaller.analytics.insights({ timezoneOffsetMinutes: 0 })).rejects.toThrow();
   });
 });
 
@@ -183,6 +183,7 @@ describe("analytics.correlations — amostra mínima", () => {
       stressLevel: 8,
       energyLevel: 3,
       triggers: ["evento raro"],
+      timezoneOffsetMinutes: 0,
     });
 
     const result = await caller.analytics.correlations();
@@ -202,6 +203,7 @@ describe("analytics.correlations — amostra mínima", () => {
         stressLevel: 7,
         energyLevel: 4,
         triggers: ["multidão"],
+      timezoneOffsetMinutes: 0,
       });
     }
 
@@ -218,7 +220,8 @@ describe("analytics.predictions — descreve em vez de prever", () => {
   it("com menos de 7 registros informa quantos existem, sem prometer previsão", async () => {
     const caller = appRouter.createCaller(createAuthContext(610));
 
-    await caller.mood.create({ moodLevel: 6, anxietyLevel: 4, stressLevel: 4, energyLevel: 6 });
+    await caller.mood.create({ moodLevel: 6, anxietyLevel: 4, stressLevel: 4, energyLevel: 6,
+      timezoneOffsetMinutes: 0, });
 
     const result = await caller.analytics.predictions();
 
@@ -232,7 +235,8 @@ describe("analytics.predictions — descreve em vez de prever", () => {
     const caller = appRouter.createCaller(createAuthContext(611));
 
     for (let i = 0; i < 8; i++) {
-      await caller.mood.create({ moodLevel: 6, anxietyLevel: 4, stressLevel: 4, energyLevel: 6 });
+      await caller.mood.create({ moodLevel: 6, anxietyLevel: 4, stressLevel: 4, energyLevel: 6,
+      timezoneOffsetMinutes: 0, });
     }
 
     const result = await caller.analytics.predictions();

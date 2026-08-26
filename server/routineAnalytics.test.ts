@@ -47,7 +47,7 @@ describe("routineAnalytics", () => {
     const { ctx } = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
-    const result = await caller.routineAnalytics.getProgress({});
+    const result = await caller.routineAnalytics.getProgress({ timezoneOffsetMinutes: 0 });
 
     expect(result).toBeDefined();
     expect(result.period).toBe("week");
@@ -62,7 +62,7 @@ describe("routineAnalytics", () => {
     const { ctx } = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
-    const result = await caller.routineAnalytics.getProgress({ period: "month" });
+    const result = await caller.routineAnalytics.getProgress({ period: "month", timezoneOffsetMinutes: 0 });
 
     expect(result).toBeDefined();
     expect(result.period).toBe("month");
@@ -72,7 +72,7 @@ describe("routineAnalytics", () => {
     const { ctx } = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
-    const result = await caller.routineAnalytics.getCorrelations();
+    const result = await caller.routineAnalytics.getCorrelations({ timezoneOffsetMinutes: 0 });
 
     expect(result).toBeDefined();
     expect(result.hasSufficientData).toBeDefined();

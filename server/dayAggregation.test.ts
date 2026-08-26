@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import * as db from "./db";
 
+/** As datas são construídas com setHours (relógio local), então o
+ *  agrupamento tem que usar o mesmo fuso para o teste não depender da
+ *  máquina em que roda. */
+const FUSO = new Date().getTimezoneOffset();
+
 /**
  * Estes testes reproduzem dois vieses que existiam no agrupamento por dia
  * das correlações:
@@ -52,7 +57,7 @@ describe("correlação rotina × humor", () => {
     // passa a ser (8+2)/2 = 5, e a média dos cinco dias, (5+8*4)/5 = 7.4.
     await registrarHumor(userId, diasAtras(1, 20), 2);
 
-    const resultado = await db.getRoutineMoodCorrelations(userId);
+    const resultado = await db.getRoutineMoodCorrelations(userId, FUSO);
 
     expect(resultado.hasSufficientData).toBe(true);
     expect(resultado.daysWithRoutines).toBe(5);
@@ -74,7 +79,7 @@ describe("correlação rotina × humor", () => {
       await registrarHumor(userId, diasAtras(i), 3);
     }
 
-    const resultado = await db.getRoutineMoodCorrelations(userId);
+    const resultado = await db.getRoutineMoodCorrelations(userId, FUSO);
 
     expect(resultado.hasSufficientData).toBe(true);
     expect(resultado.daysWithRoutines).toBe(3);
@@ -101,10 +106,52 @@ describe("correlação sintoma × humor", () => {
       await registrarHumor(userId, diasAtras(i, 21), 6);
     }
 
-    const resultado = await db.getSymptomMoodCorrelation(userId, 30);
+    const resultado = await db.getSymptomMoodCorrelation(userId, FUSO, 30);
 
     expect(resultado.hasSufficientData).toBe(true);
     expect(resultado.highSeverityDayCount).toBe(3);
     expect(resultado.avgMoodHighSeverity).toBe(4);
+  });
+});
+
+describe("fronteira de dia no fuso do usuário", () => {
+  it("registro das 22h30 no Brasil conta no próprio dia, não no seguinte", () => {
+    // 01h30 UTC = 22h30 do dia anterior em UTC-3 (offset 180).
+    const instante = new Date("2026-03-10T01:30:00.000Z");
+
+    expect(db.getUserDayKey(0, instante)).toBe("2026-03-10");
+    expect(db.getUserDayKey(180, instante)).toBe("2026-03-09");
+    // 09/03/2026 é segunda-feira; em UTC o registro cairia na terça.
+    expect(db.toUserWallClock(180, instante).getUTCDay()).toBe(1);
+    expect(db.toUserWallClock(0, instante).getUTCDay()).toBe(2);
+  });
+
+  it("getSymptomAnalytics agrupa pelo dia do usuário, não pelo dia UTC", async () => {
+    const userId = 704;
+
+    // Ontem, 01h30 UTC — ou seja, anteontem às 22h30 para quem está em UTC-3.
+    const instante = new Date();
+    instante.setUTCDate(instante.getUTCDate() - 1);
+    instante.setUTCHours(1, 30, 0, 0);
+
+    await db.createSymptomEntry({
+      userId,
+      date: instante,
+      symptomType: "sensory_sensitivity",
+      severity: 6,
+    });
+
+    const noFusoDoBrasil = await db.getSymptomAnalytics(userId, 180, 30);
+    const emUtc = await db.getSymptomAnalytics(userId, 0, 30);
+
+    const diaLocal = db.getUserDayKey(180, instante);
+    const diaUtc = db.getUserDayKey(0, instante);
+
+    expect(diaLocal).not.toBe(diaUtc);
+    expect(noFusoDoBrasil.severityTrend.map((d) => d.date)).toEqual([diaLocal]);
+    expect(emUtc.severityTrend.map((d) => d.date)).toEqual([diaUtc]);
+    expect(noFusoDoBrasil.severityByWeekday[0].weekday).toBe(
+      db.toUserWallClock(180, instante).getUTCDay()
+    );
   });
 });

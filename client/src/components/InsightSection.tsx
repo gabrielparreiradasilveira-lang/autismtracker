@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Lightbulb, Plus } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { fusoDoUsuario } from "@/lib/timezone";
 
 /**
  * Insights acionáveis, no formato padrão / significado / ação.
@@ -12,7 +13,7 @@ import { trpc } from "@/lib/trpc";
  * serviria para qualquer pessoa.
  */
 export default function InsightSection({ title = "O que seus dados mostram" }: { title?: string }) {
-  const query = trpc.analytics.insights.useQuery();
+  const query = trpc.analytics.insights.useQuery({ timezoneOffsetMinutes: fusoDoUsuario() });
 
   if (query.isLoading) {
     return (

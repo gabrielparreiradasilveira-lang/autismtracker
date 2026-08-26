@@ -40,6 +40,7 @@ describe("gamification is wired to real feature actions", () => {
       anxietyLevel: 3,
       stressLevel: 4,
       energyLevel: 6,
+      timezoneOffsetMinutes: 0,
     });
 
     const stats = await caller.gamification.getStats();

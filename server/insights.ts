@@ -68,9 +68,9 @@ const plural = (n: number, singular: string, pluralForm: string) =>
   `${n} ${n === 1 ? singular : pluralForm}`;
 
 /** 1. Rotina concluída × humor e ansiedade no mesmo dia. */
-async function routineVsMood(userId: number): Promise<GeneratorResult> {
+async function routineVsMood(userId: number, fuso: number): Promise<GeneratorResult> {
   const id = "routine-mood";
-  const data = await getRoutineMoodCorrelations(userId);
+  const data = await getRoutineMoodCorrelations(userId, fuso);
 
   if (!data.hasSufficientData) {
     const faltam = data.minDays - data.daysAnalyzed;
@@ -111,9 +111,9 @@ async function routineVsMood(userId: number): Promise<GeneratorResult> {
 }
 
 /** 2. Severidade de sintoma × dia da semana. */
-async function symptomByWeekday(userId: number): Promise<GeneratorResult> {
+async function symptomByWeekday(userId: number, fuso: number): Promise<GeneratorResult> {
   const id = "symptom-weekday";
-  const analytics = await getSymptomAnalytics(userId, 90);
+  const analytics = await getSymptomAnalytics(userId, fuso, 90);
 
   const eligible = analytics.severityByWeekday.filter((d) => d.count >= MIN_OCCURRENCES);
   if (eligible.length < 2) {
@@ -148,9 +148,9 @@ async function symptomByWeekday(userId: number): Promise<GeneratorResult> {
 }
 
 /** 3. Efetividade das intervenções × tipo de sintoma. */
-async function interventionBySymptomType(userId: number): Promise<GeneratorResult> {
+async function interventionBySymptomType(userId: number, fuso: number): Promise<GeneratorResult> {
   const id = "intervention-symptom";
-  const analytics = await getSymptomAnalytics(userId, 90);
+  const analytics = await getSymptomAnalytics(userId, fuso, 90);
 
   const eligible = analytics.effectivenessBySymptomType.filter((t) => t.count >= MIN_OCCURRENCES);
   if (eligible.length === 0) {
@@ -185,9 +185,9 @@ async function interventionBySymptomType(userId: number): Promise<GeneratorResul
 }
 
 /** 4. Gatilho × severidade do sintoma no mesmo registro. */
-async function triggerVsSymptom(userId: number): Promise<GeneratorResult> {
+async function triggerVsSymptom(userId: number, fuso: number): Promise<GeneratorResult> {
   const id = "trigger-symptom";
-  const analytics = await getSymptomAnalytics(userId, 90);
+  const analytics = await getSymptomAnalytics(userId, fuso, 90);
 
   const eligible = analytics.topTriggers.filter((t) => t.count >= MIN_OCCURRENCES);
   if (eligible.length === 0) {
@@ -211,14 +211,11 @@ async function triggerVsSymptom(userId: number): Promise<GeneratorResult> {
 /**
  * 6. Duração típica dos episódios, por tipo de sintoma.
  *
- * Agrupa só por tipo. Não usa fronteira de dia de propósito: o
- * agrupamento diário de getSymptomAnalytics ainda calcula o dia em UTC,
- * e uma métrica nova apoiada nele já nasceria errada para quem registra
- * à noite.
+ * Agrupa só por tipo — a duração média não depende de fronteira de dia.
  */
-async function symptomDuration(userId: number): Promise<GeneratorResult> {
+async function symptomDuration(userId: number, fuso: number): Promise<GeneratorResult> {
   const id = "symptom-duration";
-  const analytics = await getSymptomAnalytics(userId, 90);
+  const analytics = await getSymptomAnalytics(userId, fuso, 90);
 
   const eligible = analytics.durationBySymptomType.filter((d) => d.count >= MIN_OCCURRENCES);
   if (eligible.length === 0) {
@@ -269,14 +266,15 @@ async function mostEffectiveTechnique(userId: number): Promise<GeneratorResult> 
   };
 }
 
-export async function generateInsights(userId: number) {
+export async function generateInsights(userId: number, timezoneOffsetMinutes: number) {
+  const fuso = timezoneOffsetMinutes;
   const results = await Promise.all([
-    routineVsMood(userId),
-    symptomByWeekday(userId),
-    interventionBySymptomType(userId),
-    triggerVsSymptom(userId),
+    routineVsMood(userId, fuso),
+    symptomByWeekday(userId, fuso),
+    interventionBySymptomType(userId, fuso),
+    triggerVsSymptom(userId, fuso),
     mostEffectiveTechnique(userId),
-    symptomDuration(userId),
+    symptomDuration(userId, fuso),
   ]);
 
   return {

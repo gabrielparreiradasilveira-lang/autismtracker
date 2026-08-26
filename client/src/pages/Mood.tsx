@@ -10,6 +10,7 @@ import { Heart, ArrowLeft } from "lucide-react";
 import { MoodCalendar } from "@/components/MoodCalendar";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { fusoDoUsuario } from "@/lib/timezone";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -49,6 +50,7 @@ export default function Mood() {
       energyLevel: energyLevel[0],
       notes: notes || undefined,
       triggers: triggers ? triggers.split(",").map(t => t.trim()) : undefined,
+      timezoneOffsetMinutes: fusoDoUsuario(),
     });
   };
 

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, ArrowLeft, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { fusoDoUsuario } from "@/lib/timezone";
 import { plural } from "@/lib/utils";
 import { Line, Bar } from "react-chartjs-2";
 import {
@@ -38,7 +39,7 @@ export default function Analytics() {
   
   const patternsQuery = trpc.analytics.patterns.useQuery();
   const trendsQuery = trpc.analytics.trends.useQuery({ days: 30 });
-  const symptomAnalyticsQuery = trpc.symptoms.getAnalytics.useQuery({ days: 30 });
+  const symptomAnalyticsQuery = trpc.symptoms.getAnalytics.useQuery({ days: 30, timezoneOffsetMinutes: fusoDoUsuario() });
   const techniqueAnalyticsQuery = trpc.techniques.getAnalytics.useQuery();
 
   if (loading) return <PageLoader />;
