@@ -122,6 +122,22 @@ export default function Dashboard() {
           </Link>
         </div>
 
+        {/* Planner "Voe Alto. Seja leve." */}
+        <Link href="/planner">
+          <Card className="mb-8 cursor-pointer border-2 border-gray-900 hover:shadow-lg transition-shadow">
+            <CardContent className="p-5 flex flex-wrap items-center gap-4">
+              <span className="text-4xl" aria-hidden>🦍</span>
+              <div className="flex-1 min-w-[12rem]">
+                <p className="text-lg font-bold text-gray-900">Voe Alto. Seja leve.</p>
+                <p className="text-sm text-gray-600">
+                  Planner, hábitos, metas, estudos, finanças e projetos num só lugar.
+                </p>
+              </div>
+              <span className="text-sm font-medium text-gray-900">Abrir →</span>
+            </CardContent>
+          </Card>
+        </Link>
+
         {/* Quick Actions Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <Link href="/mood">

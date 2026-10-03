@@ -15,6 +15,14 @@ export type NotificationType =
   | 'general';
 
 /**
+ * Notificação cujo horário já chegou. Lembretes com alarme (Planner) são
+ * gravados com scheduledFor no futuro e só devem aparecer — e contar como
+ * não lidos — a partir desse instante. Ordenadas pelo horário em que
+ * "chegaram", um alarme criado há dias aparece no topo quando dispara.
+ */
+const JA_CHEGOU = sql`(scheduledFor IS NULL OR scheduledFor <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))`;
+
+/**
  * Interface para subscription de push
  */
 export interface PushSubscription {
@@ -177,7 +185,8 @@ export async function getUserNotifications(userId: number, limit = 20) {
       sql`SELECT id, type, title, body, icon, data, scheduledFor, sent, read, createdAt 
           FROM notifications 
           WHERE userId = ${userId}
-          ORDER BY createdAt DESC
+          AND ${JA_CHEGOU}
+          ORDER BY COALESCE(scheduledFor, createdAt) DESC
           LIMIT ${limit}`
     );
 
@@ -276,7 +285,7 @@ export async function getUnreadNotificationCount(userId: number) {
   try {
     const result = await db.execute(
       sql`SELECT COUNT(*) as count FROM notifications 
-          WHERE userId = ${userId} AND read = false`
+          WHERE userId = ${userId} AND read = false AND ${JA_CHEGOU}`
     );
 
     if (Array.isArray(result) && result.length > 0) {

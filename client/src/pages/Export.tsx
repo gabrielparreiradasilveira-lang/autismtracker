@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Activity, ArrowLeft, Download, FileText, FileJson } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { getEntity, type EntityKey } from "@shared/planner";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -34,6 +35,7 @@ export default function Export() {
   const diaryQuery = trpc.diary.timeline.useQuery({ sources: ["diary"] });
   const techniqueAnalyticsQuery = trpc.techniques.getAnalytics.useQuery();
   const gameStatsQuery = trpc.gamification.getStats.useQuery();
+  const plannerQuery = trpc.planner.exportAll.useQuery();
 
   /**
    * Recorta uma lista pelo período escolhido.
@@ -87,6 +89,8 @@ export default function Export() {
         // inteiro independentemente do período.
         tecnicas: techniqueAnalyticsQuery.data ?? null,
         gamificacao: gameStatsQuery.data ?? null,
+        // Planner "Voe Alto. Seja leve.": todas as bases, completas.
+        planner: plannerQuery.data ?? null,
       };
 
       if (exportFormat === "json") {
@@ -159,6 +163,25 @@ export default function Export() {
             `Sequência: ${r.currentStreak} dias`,
             r.description || "",
           ]),
+          // Planner: uma linha por registro de cada base; as propriedades
+          // além do nome vão juntas na última coluna, como "chave: valor".
+          ...Object.entries(plannerQuery.data ?? {}).flatMap(([base, linhas]) =>
+            linhas.map((r) => {
+              const { id, createdAt, updatedAt, name, ...resto } = r;
+              return [
+                `Planner · ${getEntity(base as EntityKey).label}`,
+                new Date(createdAt).toLocaleDateString("pt-BR"),
+                String(name ?? ""),
+                "",
+                "",
+                "",
+                Object.entries(resto)
+                  .filter(([, v]) => v !== null && v !== false && !(Array.isArray(v) && v.length === 0))
+                  .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
+                  .join("; "),
+              ];
+            })
+          ),
         ];
 
         const csvString = csvRows

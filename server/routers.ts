@@ -13,6 +13,8 @@ import { generateInsights, INSIGHT_LABELS } from "./insights";
 import * as notifications from "./notifications";
 import { indexarGatilhos, normalizarGatilho } from "./triggerMatching";
 import * as crisis from "./crisis";
+import * as planner from "./planner";
+import { ENTITY_KEYS, PLANNER_SETTINGS, type EntityKey } from "@shared/planner";
 
 /**
  * Número mínimo de ocorrências para uma média por gatilho ser exibida
@@ -1520,6 +1522,78 @@ export const appRouter = router({
 
     getAnalytics: protectedProcedure.query(async ({ ctx }) => {
       return await db.getTechniqueAnalytics(ctx.user.id);
+    }),
+  }),
+
+  /**
+   * Planner "Voe Alto. Seja leve." — as bases do template do Notion.
+   *
+   * Um CRUD só para todas as bases: a entidade escolhe a tabela e o
+   * esquema de validação em `shared/planner.ts`. As visualizações (Hoje,
+   * Atrasado, Semana…) são filtros sobre a listagem, feitos no cliente
+   * com o dia local de quem usa.
+   */
+  planner: router({
+    list: protectedProcedure
+      .input(z.object({ entity: z.enum(ENTITY_KEYS as [EntityKey, ...EntityKey[]]) }))
+      .query(async ({ ctx, input }) => {
+        return await planner.list(ctx.user.id, input.entity);
+      }),
+
+    create: protectedProcedure
+      .input(z.object({
+        entity: z.enum(ENTITY_KEYS as [EntityKey, ...EntityKey[]]),
+        data: z.record(z.unknown()),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return await planner.create(ctx.user.id, input.entity, input.data);
+      }),
+
+    update: protectedProcedure
+      .input(z.object({
+        entity: z.enum(ENTITY_KEYS as [EntityKey, ...EntityKey[]]),
+        id: z.number().int(),
+        data: z.record(z.unknown()),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return assertOwned(await planner.update(ctx.user.id, input.entity, input.id, input.data));
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({
+        entity: z.enum(ENTITY_KEYS as [EntityKey, ...EntityKey[]]),
+        id: z.number().int(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return assertOwned(await planner.remove(ctx.user.id, input.entity, input.id));
+      }),
+
+    file: protectedProcedure
+      .input(z.object({ id: z.number().int() }))
+      .query(async ({ ctx, input }) => {
+        return await planner.getFile(ctx.user.id, input.id);
+      }),
+
+    novaSemana: protectedProcedure
+      .input(z.object({ hoje: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+      .mutation(async ({ ctx, input }) => {
+        return await planner.novaSemana(ctx.user.id, input.hoje);
+      }),
+
+    getSetting: protectedProcedure
+      .input(z.object({ key: z.enum(PLANNER_SETTINGS) }))
+      .query(async ({ ctx, input }) => {
+        return { value: await planner.getSetting(ctx.user.id, input.key) };
+      }),
+
+    setSetting: protectedProcedure
+      .input(z.object({ key: z.enum(PLANNER_SETTINGS), value: z.string().max(2000) }))
+      .mutation(async ({ ctx, input }) => {
+        return await planner.setSetting(ctx.user.id, input.key, input.value);
+      }),
+
+    exportAll: protectedProcedure.query(async ({ ctx }) => {
+      return await planner.exportAll(ctx.user.id);
     }),
   }),
 });

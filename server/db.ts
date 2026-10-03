@@ -32,6 +32,7 @@ import { ENV } from "./_core/env";
 import { indexarGatilhos, normalizarGatilho } from "./triggerMatching";
 import { MIGRATION_SQL } from "./migrations";
 import { runSeeds } from "./seeds";
+import { ensurePlannerSchema } from "./plannerSchema";
 
 const dialect = new SQLiteSyncDialect();
 
@@ -60,6 +61,7 @@ function makeExecute(client: Database.Database) {
 export type AppDb = ReturnType<typeof drizzle> & { execute: (query: SQL) => Promise<any> };
 
 let _db: AppDb | null = null;
+let _client: Database.Database | null = null;
 
 export async function getDb(): Promise<AppDb | null> {
   if (!_db) {
@@ -72,15 +74,26 @@ export async function getDb(): Promise<AppDb | null> {
       client.pragma("journal_mode = WAL");
       client.exec(MIGRATION_SQL);
       runSeeds(client);
+      ensurePlannerSchema(client);
       const db = drizzle(client) as AppDb;
       db.execute = makeExecute(client);
       _db = db;
+      _client = client;
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
     }
   }
   return _db;
+}
+
+/**
+ * Conexão better-sqlite3 crua, para módulos que montam o SQL a partir de
+ * uma especificação (o Planner) em vez do query builder do Drizzle.
+ */
+export async function getClient(): Promise<Database.Database | null> {
+  await getDb();
+  return _client;
 }
 
 // Users

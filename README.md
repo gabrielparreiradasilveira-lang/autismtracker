@@ -58,3 +58,17 @@ npm start       # serve API + frontend em :3000
 - **Modo de Crise** — botão SOS sempre visível, técnicas rápidas de autorregulação, contatos de emergência e mensagens pré-escritas
 - **Lembretes Inteligentes** — aprendem os melhores horários com base no seu uso
 - **Exportação** — compartilhe dados com terapeutas e profissionais
+
+### Voe Alto. Seja leve. (Planner)
+
+Réplica operacional do template Notion "Voe Alto. Seja leve.", em `/planner`:
+
+- **Painel** — frase, galeria de Áreas, calendário, relógio, To-do Hoje, Pomodoro, hábitos do dia, Atividades que surgiram hoje, Notas e Ideias, Lembretes (alarme vira notificação) e Reservatório de Dopamina
+- **Planner** — Tarefas com Inbox, Hoje, Atrasado, Amanhã, Próxima Semana, Essa Semana, Sem Data Prévia, Calendário, Completo e Visualização Geral
+- **Rotina/Hábitos** — Tracker de 6 hábitos com botão Nova Semana e visões Dia / Semana / Mês / Calendário
+- **Metas** — quadro por prazo com progresso calculado pelas Ações relacionadas
+- **Estudos/Leitura** — Leitura (Lendo / A ler / Lido), Cursos, Estudos Gerais com anexo, contador de dias e Spotify
+- **Finanças** — Entradas e Saídas por mês, com totais e saldo
+- **Projetos** — quadro/galeria com progresso e tarefas (Hoje, Próximas, Sem data, Calendário)
+
+As bases, opções e fórmulas ficam em `shared/planner.ts`; as tabelas SQLite são criadas a partir dele (`server/plannerSchema.ts`).

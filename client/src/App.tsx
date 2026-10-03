@@ -30,6 +30,13 @@ import SOSButton from "./components/SOSButton";
 import ConnectionGate from "./components/ConnectionGate";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
+import PlannerHome from "./pages/planner/PlannerHome";
+import PlannerTarefas from "./pages/planner/PlannerTarefas";
+import PlannerHabitos from "./pages/planner/PlannerHabitos";
+import PlannerMetas from "./pages/planner/PlannerMetas";
+import PlannerEstudos from "./pages/planner/PlannerEstudos";
+import PlannerFinancas from "./pages/planner/PlannerFinancas";
+import PlannerProjetos from "./pages/planner/PlannerProjetos";
 
 function Router() {
   return (
@@ -58,6 +65,13 @@ function Router() {
       <Route path={"/preset-messages"} component={PresetMessages} />
       <Route path={"/techniques"} component={TechniqueLibrary} />
       <Route path={"/symptoms"} component={Symptoms} />
+      <Route path={"/planner"} component={PlannerHome} />
+      <Route path={"/planner/tarefas"} component={PlannerTarefas} />
+      <Route path={"/planner/habitos"} component={PlannerHabitos} />
+      <Route path={"/planner/metas"} component={PlannerMetas} />
+      <Route path={"/planner/estudos"} component={PlannerEstudos} />
+      <Route path={"/planner/financas"} component={PlannerFinancas} />
+      <Route path={"/planner/projetos"} component={PlannerProjetos} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
